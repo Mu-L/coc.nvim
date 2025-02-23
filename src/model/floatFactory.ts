@@ -1,5 +1,5 @@
 'use strict'
-import { Buffer, Neovim, Window } from '../neovim'
+import { Buffer, Neovim, Window } from '@chemzqm/neovim'
 import { debounce } from '../util/node'
 import events, { BufEvents } from '../events'
 import { parseDocuments } from '../markdown'
@@ -34,11 +34,11 @@ export interface FloatWinConfig extends FloatConfig {
   cursorline?: boolean
   modes?: string[]
   excludeImages?: boolean
-  position?: "fixed" | "auto";
-  top?: number;
-  bottom?: number;
-  left?: number;
-  right?: number;
+  position?: "fixed" | "auto"
+  top?: number
+  bottom?: number
+  left?: number
+  right?: number
 }
 
 /**

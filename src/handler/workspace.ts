@@ -1,5 +1,5 @@
 'use strict'
-import { Neovim } from '../neovim'
+import { Neovim } from '@chemzqm/neovim'
 import { v4 as uuid } from 'uuid'
 import { writeHeapSnapshot } from 'v8'
 import { Location } from 'vscode-languageserver-types'
@@ -212,7 +212,7 @@ export default class WorkspaceHandler {
     })
   }
 
-  public async doAutocmd(id: number, args: any[]): Promise<void> {
+  public async doAutocmd(id: string, args: any[]): Promise<void> {
     await workspace.autocmds.doAutocmd(id, args)
   }
 

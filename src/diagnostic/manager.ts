@@ -1,5 +1,5 @@
 'use strict'
-import type { Neovim } from '../neovim'
+import type { Neovim } from '@chemzqm/neovim'
 import { Diagnostic, DiagnosticSeverity, DiagnosticTag, Location, Position, Range, TextDocumentIdentifier } from 'vscode-languageserver-types'
 import { URI } from 'vscode-uri'
 import commands from '../commands'
@@ -35,6 +35,7 @@ interface DiagnosticSignConfig {
 
 export interface DiagnosticItem {
   file: string
+  bufnr?: number
   lnum: number
   end_lnum: number
   col: number
@@ -69,6 +70,8 @@ class DiagnosticManager implements Disposable {
       execute: () => this.jumpRelated()
     }, false, 'jump to related locations of current diagnostic.')
     this.defineSigns(workspace.initialConfiguration.get<DiagnosticSignConfig>('diagnostic'))
+    let globalValue = workspace.initialConfiguration.inspect('diagnostic.enable').globalValue
+    this.enabled = globalValue !== false
     this.buffers = workspace.registerBufferSync(doc => {
       let buf = new DiagnosticBuffer(this.nvim, doc)
       buf.onDidRefresh(diagnostics => {
@@ -154,7 +157,7 @@ class DiagnosticManager implements Disposable {
    */
   public async setLocationlist(bufnr: number): Promise<void> {
     let doc = workspace.getAttachedDocument(bufnr)
-    let buf = this.buffers.getItem(doc.bufnr)
+    let buf = this.getItem(doc.bufnr)
     let diagnostics: Diagnostic[] = []
     for (let diags of Object.values(this.getDiagnostics(buf))) {
       diagnostics.push(...diags)
@@ -378,6 +381,7 @@ class DiagnosticManager implements Disposable {
           let { start, end } = diagnostic.range
           let o: DiagnosticItem = {
             file: u.fsPath,
+            bufnr: doc ? doc.bufnr : undefined,
             lnum: start.line + 1,
             end_lnum: end.line + 1,
             col: Array.isArray(lines) ? byteIndex(lines[start.line] ?? '', start.character) + 1 : start.character + 1,

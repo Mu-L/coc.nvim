@@ -1,5 +1,5 @@
 'use strict'
-import type { Window } from './neovim'
+import type { Window } from '@chemzqm/neovim'
 import type { Disposable, Event } from 'vscode-languageserver-protocol'
 import type { CreateFile, DeleteFile, Diagnostic, Location, Range, RenameFile, TextDocumentEdit } from 'vscode-languageserver-types'
 import type { URI } from 'vscode-uri'
@@ -20,6 +20,8 @@ declare global {
     }
   }
 }
+
+export type HoverTarget = 'float' | 'preview' | 'echo'
 
 export type Optional<T extends object, K extends keyof T = keyof T> = Omit<
   T,
@@ -142,6 +144,7 @@ export interface HighlightItem extends HighlightItemOption {
 
 export interface Env {
   runtimepath: string
+  readonly jumpAutocmd: boolean
   readonly guicursor: string
   readonly tabCount: number
   readonly mode: string
@@ -233,6 +236,13 @@ export interface KeymapOption {
   cancel?: boolean
   silent?: boolean
   repeat?: boolean
+}
+
+export interface JumpInfo {
+  // placeholder range
+  readonly range: Range
+  // character before current placeholder.
+  readonly charbefore: string
 }
 
 export interface Autocmd {

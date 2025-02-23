@@ -10,6 +10,8 @@ let s:error_sign = get(g:, 'coc_status_error_sign', has('mac') && s:utf ? "\u274
 let s:warning_sign = get(g:, 'coc_status_warning_sign', has('mac') && s:utf ? "\u26a0\ufe0f " : 'W ')
 let s:select_api = exists('*nvim_select_popupmenu_item')
 let s:callbacks = {}
+let s:fns = ['init', 'complete', 'should_complete', 'refresh', 'get_startcol', 'on_complete', 'on_enter']
+let s:all_fns = s:fns + map(copy(s:fns), 'toupper(strpart(v:val, 0, 1)) . strpart(v:val, 1)')
 
 function! coc#expandable() abort
   return coc#rpc#request('snippetCheck', [1, 0])
@@ -21,6 +23,19 @@ endfunction
 
 function! coc#expandableOrJumpable() abort
   return coc#rpc#request('snippetCheck', [1, 1])
+endfunction
+
+function! coc#clearGroups(prefix) abort
+  " 遍历所有 augroup 名称
+  for group in getcompletion('', 'augroup')
+    " 检查是否以指定前缀开头
+    if group =~# '^' . a:prefix
+      " 进入该 augroup，执行清空操作
+      execute 'augroup ' . group
+        autocmd!
+      augroup END
+    endif
+  endfor
 endfunction
 
 " add vim command to CocCommand list
@@ -138,9 +153,8 @@ function! coc#_suggest_variables() abort
 endfunction
 
 function! coc#_remote_fns(name)
-  let fns = ['init', 'complete', 'should_complete', 'refresh', 'get_startcol', 'on_complete', 'on_enter']
   let res = []
-  for fn in fns
+  for fn in s:all_fns
     if exists('*coc#source#'.a:name.'#'.fn)
       call add(res, fn)
     endif
@@ -149,7 +163,8 @@ function! coc#_remote_fns(name)
 endfunction
 
 function! coc#_do_complete(name, opt, cb) abort
-  let handler = 'coc#source#'.a:name.'#complete'
+  let method = get(a:opt, 'vim9', v:false) ? 'Complete' : 'complete'
+  let handler = 'coc#source#'.a:name.'#'.method
   let l:Cb = {res -> a:cb(v:null, res)}
   let args = [a:opt, l:Cb]
   call call(handler, args)
