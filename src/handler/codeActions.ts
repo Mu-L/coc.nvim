@@ -70,6 +70,10 @@ export default class CodeActions {
       if (a.disabled && !b.disabled) return 1
       if (b.disabled && !a.disabled) return -1
       if (a.isPreferred != b.isPreferred) return boolToNumber(b.isPreferred) - boolToNumber(a.isPreferred)
+      if (!only) {
+        if (isQuickfix(a) && !isQuickfix(b)) return -1
+        if (isQuickfix(b) && !isQuickfix(a)) return 1
+      }
       return 0
     })
     return codeActions
@@ -150,6 +154,12 @@ export default class CodeActions {
 
 export function shouldAutoApply(only: CodeActionKind[] | string | undefined): boolean {
   if (!only) return false
-  if (typeof only === 'string' || only[0] === CodeActionKind.QuickFix || only[0] === CodeActionKind.SourceFixAll) return true
+  if (typeof only === 'string' || only[0] === CodeActionKind.QuickFix || only[0] === CodeActionKind.SourceFixAll) {
+    return workspace.initialConfiguration.get('coc.preferences.autoApplySingleQuickfix', true)
+  }
   return false
+}
+
+function isQuickfix(codeAction: CodeAction): boolean {
+  return codeAction.kind && codeAction.kind.startsWith('quickfix')
 }
