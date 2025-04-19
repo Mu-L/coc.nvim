@@ -3956,6 +3956,8 @@ declare module 'coc.nvim' {
     script?: boolean
     expr?: boolean
     unique?: boolean
+    // vim9 only
+    special?: boolean
   }
 
   export interface BufferHighlight {
@@ -4016,6 +4018,48 @@ declare module 'coc.nvim' {
      * vim9 only
      */
     text_wrap?: 'wrap' | 'truncate'
+  }
+
+  export interface AugroupOption {
+    /**
+     * Clear the all autocmds before create autocmd group, default to `true`.
+     */
+    clear?: boolean
+  }
+
+  interface AutocmdOption {
+    /**
+     * Group name or group id from `nvim.createAugroup()`, see `:h autocmd-groups`.
+     */
+    group?: string | number
+    /**
+     * Pattern to match, see `:h autocmd-pattern`.
+     */
+    pattern?: string | string[]
+    /**
+     * Buffer number for buflocal autocommand, see `:h autocmd-buflocal`.
+     */
+    buffer?: number
+    /**
+    * Description test, not used on vim9.
+    */
+    desc?: string
+    /**
+     * Vim command to run when trigger autocommand.
+     */
+    command?: string
+    /**
+     * See `:h autocmd-once`.
+     */
+    once?: boolean
+    /**
+     * See `:h autocmd-nested`.
+     */
+    nested?: boolean
+    /**
+     * Vim9 only, see `:h autocmd_add()`
+     */
+    replace?: boolean
   }
 
   interface BaseApi<T> {
@@ -4094,7 +4138,7 @@ declare module 'coc.nvim' {
     /**
      * Echo error message to vim and log error stack.
      */
-    echoError(msg: unknown): void
+    echoError(error: Error | string): void
 
     /**
      * Check if `nvim_` function exists.
@@ -4348,12 +4392,38 @@ declare module 'coc.nvim' {
      * @param {VimValue | VimValue[]} args
      * @returns {Promise<any>}
      */
-    call(fname: string, args?: VimValue | VimValue[]): Promise<any>
+    call(fname: string, args?: VimValue | VimValue[]): Promise<unknown>
 
     /**
      * Call a vim function by notification.
      */
     call(fname: string, args: VimValue | VimValue[], isNotify: true): void
+
+    /**
+     * Use call command `:h channel-commands` to call function on vim9.
+     * Warning: NodeJS side only get the 'ERROR' text on error, to get error message,
+     * see `:h coc-api-channel`
+     */
+    callVim(fname: string, args?: VimValue | VimValue[]): Promise<unknown>
+
+    /**
+     * Use call command `:h channel-commands` to call function on vim9.
+     * Warning: errors not exists on NodeJS side, see `:h coc-api-channel`
+     */
+    callVim(fname: string, args: VimValue | VimValue[], isNotify: true): void
+
+    /**
+     * Use expr command `:h channel-commands` to eval expression on vim9.
+     * Warning: NodeJS side only get the 'ERROR' text on error, to get error message,
+     * see `:h coc-api-channel`
+     */
+    evalVim(expr: string): Promise<unknown>
+
+    /**
+     * Use ex command `:h channel-commands` to execute command on vim9.
+     * Warning: errors not exists on NodeJS side, see `:h coc-api-channel`
+     */
+    exVim(command: string): void
 
     /**
      * Call a vim function with timer of timeout 0.
@@ -4464,6 +4534,33 @@ declare module 'coc.nvim' {
      * Gets width(display cells) of string.
      */
     strWidth(str: string): Promise<number>
+
+    /**
+     * Create autocmd group with {name} and {option}
+     */
+    createAugroup(name: string, option?: AugroupOption): Promise<number>
+
+    /**
+     * Create autocmd group with {name} and {option}, use notification to vim.
+     */
+    createAugroup(name: string, option: AugroupOption, isNotify: true): void
+
+    /**
+     * Create autocmd with {event} and {option}
+     */
+    createAutocmd(event: string | string[], option?: AutocmdOption): Promise<number>
+
+    /**
+     * Create autocmd with {event} and {option}
+     */
+    createAutocmd(event: string | string[], option: AutocmdOption, isNotify: true): void
+
+    /**
+     * Delete autocmd with {id} returned from `nvim.createAutocmd()`
+     * Notice: vim9 can't support delete specific autocmd yet, autocmds which
+     * have the same `group` `event` `pattern` are all cleared.
+     */
+    deleteAutocmd(id: number): void
 
     /**
      * Gets a list of dictionaries representing attached UIs.
@@ -8272,6 +8369,10 @@ declare module 'coc.nvim' {
      * Enable repeat support for repeat.vim, default `false`.
      */
     repeat?: boolean
+    /**
+     * Use <special> map argument, see `:h :map-special`, vim9 only.
+     */
+    special?: boolean
   }
 
   export interface DidChangeTextDocumentParams {
@@ -8325,15 +8426,27 @@ declare module 'coc.nvim' {
     /**
      * Callback functions that called with evaled arglist as arguments.
      */
-    callback: Function
+    callback: (...args: any[]) => void | Promise<void>
     /**
      * Match pattern, default to `*`.
      */
-    pattern?: string
+    pattern?: string | string[]
     /**
      * Vim expression that eval to arguments of callback, default to `[]`
      */
     arglist?: string[]
+    /**
+     * buffer number for buffer-local autocommand.
+     */
+    buffer?: number
+    /**
+     * the command is executed once when `true`, see `:h autocmd-once`
+     */
+    once?: boolean
+    /**
+     * allow nested autocmd when `true`, see `:h autocmd-nested`
+     */
+    nested?: boolean
     /**
      * Use request when `true`, use notification by default.
      */
@@ -9153,7 +9266,7 @@ declare module 'coc.nvim' {
      * @param {MapMode} mode - Mode short-name.
      * @param {string} rhs - rhs of key-mapping.
      * @param {Function} fn - callback function.
-     * @param {number | boolean} buffer - Buffer number or current buffer by use `true`, default to false.
+     * @param {number | boolean} buffer - Buffer number or current buffer by use `true` or 0, default to false.
      * @param {boolean} cancel - Cancel pupop menu before invoke callback, insert mode only, define to true.
      * @returns {Disposable}
      */
@@ -12679,4 +12792,4 @@ declare module 'coc.nvim' {
   }
   // }}
 }
-// vim: set sw=2 ts=2 sts=2 et foldmarker={{,}} foldmethod=marker foldlevel=0 nofen:
+// vim: set tw=80 sw=2 ts=2 sts=2 et foldmarker={{,}} foldmethod=marker foldlevel=0 nofen:

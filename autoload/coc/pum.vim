@@ -374,7 +374,7 @@ function! coc#pum#create(lines, opt, config) abort
     return
   endif
   let s:reversed = get(a:config, 'reverse', 0) && config['row'] < 0
-  let s:virtual_text = a:opt['virtualText']
+  let s:virtual_text = get(a:opt, 'virtualText', v:false)
   let s:pum_size = len(a:lines)
   let s:pum_index = a:opt['index']
   let lnum = s:index_to_lnum(s:pum_index)
@@ -386,7 +386,7 @@ function! coc#pum#create(lines, opt, config) abort
         \ 'index': lnum - 1,
         \ 'focusable': v:false
         \ })
-  call extend(config, coc#dict#pick(a:config, ['highlight', 'rounded', 'highlights', 'winblend', 'shadow', 'border', 'borderhighlight']))
+  call extend(config, coc#dict#pick(a:config, ['highlight', 'rounded', 'highlights', 'winblend', 'shadow', 'border', 'borderhighlight', 'title']))
   if s:reversed
     for item in config['highlights']
       let item['lnum'] = s:pum_size - item['lnum'] - 1
@@ -408,7 +408,7 @@ function! coc#pum#create(lines, opt, config) abort
   if s:is_vim
     call popup_setoptions(s:pum_winid, { 'firstline': firstline })
   else
-    call coc#compat#execute(s:pum_winid, 'call winrestview({"lnum":'.lnum.',"topline":'.firstline.'})')
+    call win_execute(s:pum_winid, 'call winrestview({"lnum":'.lnum.',"topline":'.firstline.'})')
   endif
   call coc#dialog#place_sign(s:pum_bufnr, s:pum_index == -1 ? 0 : lnum)
   " content before col and content after cursor
@@ -541,7 +541,7 @@ function! s:select_line(winid, line) abort
   let s:pum_index = s:reversed ? (a:line == 0 ? -1 : s:pum_size - a:line) : a:line - 1
   let lnum = s:reversed ? (a:line == 0 ? s:pum_size : a:line) : max([1, a:line])
   if s:is_vim
-    call coc#compat#execute(a:winid, 'exe '.lnum)
+    call win_execute(a:winid, 'exe '.lnum)
   else
     call nvim_win_set_cursor(a:winid, [lnum, 0])
   endif

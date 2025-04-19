@@ -247,6 +247,7 @@ export interface KeymapOption {
   cancel?: boolean
   silent?: boolean
   repeat?: boolean
+  special?: boolean
 }
 
 export interface TabStopInfo {
@@ -271,13 +272,15 @@ export interface JumpInfo {
 }
 
 export interface Autocmd {
-  pattern?: string
   event: string | string[]
+  callback: (...args: any[]) => void | Promise<void>
+  buffer?: number
+  once?: boolean
+  nested?: boolean
+  pattern?: string | string[]
   arglist?: string[]
   request?: boolean
   thisArg?: any
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  callback: Function
 }
 
 export interface UltiSnipsActions {
