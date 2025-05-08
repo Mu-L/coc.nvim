@@ -27,7 +27,7 @@ export default class Floating {
       } catch (e) {
         if (isCancellationError(e)) return
         logger.error(`Error on resolve complete item from ${source.name}:`, item, e)
-        return
+        // not return, may need show/hide docs.
       }
     }
     if (showDocs) {
@@ -51,6 +51,7 @@ export default class Floating {
         rounded: config.rounded ? 1 : 0,
         focusable: config.focusable === true ? 1 : 0
       }
+      if (Is.string(config.title)) opts.title = config.title
       if (config.shadow) opts.shadow = 1
       if (config.border) opts.border = [1, 1, 1, 1]
       if (config.borderhighlight) opts.borderhighlight = config.borderhighlight
@@ -66,7 +67,7 @@ export default class Floating {
     workspace.nvim.redrawVim()
   }
 
-  private cancel(): void {
+  public cancel(): void {
     if (this.resolveTokenSource) {
       this.resolveTokenSource.cancel()
       this.resolveTokenSource = undefined

@@ -105,6 +105,7 @@ function! coc#ui#open_terminal(opts) abort
     endif
     call term_start(cmd, {
           \ 'cwd': cwd,
+          \ 'term_finish': 'close',
           \ 'exit_cb': {job, status -> s:OnExit(status)},
           \ 'curwin': 1,
           \})
@@ -352,10 +353,10 @@ function! coc#ui#rename_file(oldPath, newPath, write) abort
     execute 'keepalt tab drop '.fnameescape(bufname(bufnr))
     let winid = win_getid()
   endif
-  call coc#compat#execute(winid, 'keepalt file '.fnameescape(bufname), 'silent')
-  call coc#compat#execute(winid, 'doautocmd BufEnter')
+  call win_execute(winid, 'keepalt file '.fnameescape(bufname), 'silent')
+  call win_execute(winid, 'doautocmd BufEnter')
   if a:write
-    call coc#compat#execute(winid, 'noa write!', 'silent')
+    call win_execute(winid, 'noa write!', 'silent')
     call delete(filepath, '')
   endif
   if curr != -1
@@ -449,7 +450,7 @@ function! coc#ui#outline_preview(config) abort
   call setwinvar(result[0], 'kind', 'outline-preview')
   let s:outline_preview_bufnr = result[1]
   if !empty(filetype)
-    call coc#compat#execute(result[0], 'setfiletype '.filetype)
+    call win_execute(result[0], 'setfiletype '.filetype)
   endif
   return result[1]
 endfunction
@@ -509,7 +510,7 @@ endfunction
 function! coc#ui#create_tree(opts) abort
   let viewId = a:opts['viewId']
   let bufname = a:opts['bufname']
-  let tabid = coc#util#tabnr_id(tabpagenr())
+  let tabid = coc#compat#tabnr_id(tabpagenr())
   let winid = s:get_tree_winid(a:opts)
   let bufnr = a:opts['bufnr']
   if !bufloaded(bufnr)
@@ -544,7 +545,7 @@ function! s:get_tree_winid(opts) abort
     return winid
   endif
   if winid != -1
-    call coc#compat#execute(winid, 'noa close!', 'silent!')
+    call win_execute(winid, 'noa close!', 'silent!')
   endif
   return coc#window#find('cocViewId', viewId)
 endfunction

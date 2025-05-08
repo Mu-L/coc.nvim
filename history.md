@@ -2,6 +2,69 @@
 
 Notable changes of coc.nvim:
 
+## 2025-05-08
+
+- For terminal created by `coc#ui#open_terminal`, close the terminal window on
+  terminal finish, make the behavior on vim9 the same as nvim.
+- Use lua and vim9 for highlight functions.
+
+## 2025-05-04
+
+- Execute python on snippet resolve, disable snippet synchronize on completion.
+- Change of none primary placeholder would not update placeholders with same
+  index, like UltiSnip does.
+- Add API `snippetManager.insertBufferSnippets()`.
+
+## 2025-05-03
+
+- The performance with popupmenu navigation on vim9 have improved, for some
+  cases, it's more than 10 times faster.
+- Break change: current line is not synchronized after use the pum API like
+  `coc#pum#select()`, see `:h coc#pum#select()`, functions used as expr
+  key-mappings should be not affected.
+- Break change: configuration `suggest.segmentChinese` replaced with
+  `suggest.segmenterLocales`, see `:h coc-config-suggest-segmenterLocales`.
+- Add `CompleteStart` event to `events` module.
+
+## 2025-04-25
+
+- Add `-level` argument support to diagnostics list.
+- Make lines event send before TextChange events on vim9.
+
+## 2025-04-23
+
+- Add configuration `inlayHint.maximumLength`, default to `0`
+
+## 2025-04-21
+
+- Add `WindowVisible` event to `events`.
+- Add `onVisible()` support to `BufferSyncItem`.
+- Improve inlay hint:
+    - Use lua and vim9 for virtual text api.
+    - Add `coc#vtext#set()` for set multiple virtual texts.
+    - Render all inlay hints for the first time.
+    - Use `WindowVisible` event.
+
+## 2025-04-18
+
+- Add `nvim.createAugroup()`, `nvim.createAutocmd()` and `nvim.deleteAutocmd()`.
+- Add `buffer` `once` and `nested` support to `workspace.registerAutocmd()`.
+- Not throw error from autocmd callback, log the error instead.
+- Add configuration `editor.autocmdTimeout`.
+
+## 2025-04-17
+
+- Support `$COC_VIM_CHANNEL_ENABLE` for enable channel log on vim9.
+- Add `nvim.callVim()`, `nvim.evalVim()` and `nvim.exVim()`.
+
+## 2025-04-15
+
+- Support 'title' for configuration `suggest.floatConfig` and `suggest.pumFloatConfig`.
+- Use timer for `CocStatusChange` autocmd to avoid cursor vanish caused by `redraws`.
+- Use vim9 script for api.vim and refactor related functions.
+- Add `coc#compat#call` for call api functions on vim or neovim.
+- Add `special` to interface `KeymapOption` (vim9 only).
+
 ## 2025-04-06
 
 - Add `cmd` option to interface `KeymapOption`.
@@ -25,7 +88,7 @@ Notable changes of coc.nvim:
 ## 2025-04-01
 
 - Add configuration `workspace.removeEmptyWorkspaceFolder` default to `false`.
-- Add configuration `editor.codeActionsOnSave` , similar to VSCode.
+- Add configuration `editor.codeActionsOnSave`, similar to VSCode.
 
 ## 2025-03-31
 

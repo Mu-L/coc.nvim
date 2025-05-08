@@ -34,7 +34,7 @@ export class Window {
   public highlights: Highlights = new Highlights()
   private terminalManager: Terminals = new Terminals()
   private notifications: Notifications
-  private dialogs = new Dialogs()
+  public readonly dialogs = new Dialogs()
   public readonly cursors: Cursors
   private workspace: Workspace
   constructor() {
@@ -229,7 +229,7 @@ export class Window {
    * @param bufnr Buffer number
    * @param ns Highlight namespace
    * @param items Highlight items
-   * @param region 0 based start and end line count (end exclusive)
+   * @param region 0 based start and end line count (end inclusive)
    * @param token CancellationToken
    * @returns {Promise<HighlightDiff | null>}
    */
@@ -280,8 +280,15 @@ export class Window {
     return await this.dialogs.createQuickPick(config)
   }
 
+  public async requestInputList(prompt: string, items: string[]): Promise<number> {
+    if (items.length > this.workspace.env.lines) {
+      items = items.slice(0, this.workspace.env.lines - 2)
+    }
+    return await this.dialogs.requestInputList(prompt, items)
+  }
+
   /**
-   * Show menu picker at current cursor position, |inputlist()| is used as fallback.
+   * Show menu picker at current cursor position.
    * @param items Array of texts.
    * @param option Options for menu.
    * @param token A token that can be used to signal cancellation.
@@ -352,8 +359,7 @@ export class Window {
    * @return Promise that resolves to the selected item or `undefined` when being dismissed.
    */
   public async showInformationMessage<T extends MessageItem | string>(message: string, ...items: T[]): Promise<T | undefined> {
-    let stack = Error().stack
-    return await this.notifications._showMessage('Info', message, items, stack)
+    return await this.notifications._showMessage('Info', message, items)
   }
 
   /**
@@ -364,8 +370,7 @@ export class Window {
    * @return Promise that resolves to the selected item or `undefined` when being dismissed.
    */
   public async showWarningMessage<T extends MessageItem | string>(message: string, ...items: T[]): Promise<T | undefined> {
-    let stack = Error().stack
-    return await this.notifications._showMessage('Warning', message, items, stack)
+    return await this.notifications._showMessage('Warning', message, items)
   }
 
   /**
@@ -376,8 +381,7 @@ export class Window {
    * @return Promise that resolves to the selected item or `undefined` when being dismissed.
    */
   public async showErrorMessage<T extends MessageItem | string>(message: string, ...items: T[]): Promise<T | undefined> {
-    let stack = Error().stack
-    return await this.notifications._showMessage('Error', message, items, stack)
+    return await this.notifications._showMessage('Error', message, items)
   }
 
   public async showNotification(config: NotificationConfig): Promise<void> {

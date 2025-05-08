@@ -4,18 +4,12 @@ let s:is_vim = !has('nvim')
 " first window id for bufnr
 " builtin bufwinid returns window of current tab only
 function! coc#compat#buf_win_id(bufnr) abort
-  let info = filter(getwininfo(), 'v:val["bufnr"] =='.a:bufnr)
-  if empty(info)
-    return -1
-  endif
-  return info[0]['winid']
+  return get(win_findbuf(a:bufnr), 0, -1)
 endfunction
 
 function! coc#compat#buf_set_lines(bufnr, start, end, replacement) abort
-  if s:is_vim
-    call coc#api#exec('buf_set_lines', [a:bufnr, a:start, a:end, 0, a:replacement])
-  else
-    call nvim_buf_set_lines(a:bufnr, a:start, a:end, 0, a:replacement)
+  if bufloaded(a:bufnr)
+    call coc#compat#call('buf_set_lines', [a:bufnr, a:start, a:end, 0, a:replacement])
   endif
 endfunction
 
@@ -23,31 +17,30 @@ function! coc#compat#buf_line_count(bufnr) abort
   if !bufloaded(a:bufnr)
     return 0
   endif
-  if exists('*nvim_buf_line_count')
-    return nvim_buf_line_count(a:bufnr)
-  endif
-  let info = getbufinfo(a:bufnr)
-  return empty(info) ? 0 : info[0]['linecount']
+  return coc#compat#call('buf_line_count', [a:bufnr])
 endfunction
 
-function! coc#compat#prepend_lines(bufnr, replacement) abort
-  if bufloaded(a:bufnr)
-    call appendbufline(a:bufnr, 0, a:replacement)
+" remove keymap for bufnr, not throw error
+function! coc#compat#buf_del_keymap(bufnr, mode, lhs) abort
+  if a:bufnr != 0 && !bufexists(a:bufnr)
+    return
   endif
+  try
+    call coc#compat#call('buf_del_keymap', [a:bufnr, a:mode, a:lhs])
+  catch /E31/
+    " ignore keymap doesn't exist
+  endtry
 endfunction
 
-function! coc#compat#win_is_valid(winid) abort
-  if exists('*nvim_win_is_valid')
-    return nvim_win_is_valid(a:winid)
+function! coc#compat#buf_add_keymap(bufnr, mode, lhs, rhs, opts) abort
+  if a:bufnr != 0 && !bufexists(a:bufnr)
+    return
   endif
-  return !empty(getwininfo(a:winid))
+  call coc#compat#call('buf_set_keymap', [a:bufnr, a:mode, a:lhs, a:rhs, a:opts])
 endfunction
 
 function! coc#compat#clear_matches(winid) abort
-  if !coc#compat#win_is_valid(a:winid)
-    return
-  endif
-  call clearmatches(a:winid)
+  silent! call clearmatches(a:winid)
 endfunction
 
 function! coc#compat#matchaddpos(group, pos, priority, winid) abort
@@ -69,70 +62,49 @@ endfunction
 " Delete var, not throw version.
 function! coc#compat#del_var(name) abort
   if s:is_vim
-    execute 'unlet! '.a:name
+    execute 'unlet! g:' . a:name
   else
     silent! call nvim_del_var(a:name)
   endif
 endfunction
 
-" Not throw version
-function! coc#compat#buf_del_var(bufnr, name) abort
-  if !bufloaded(a:bufnr)
-    return
-  endif
-  if exists('*nvim_buf_del_var')
-    silent! call nvim_buf_del_var(a:bufnr, a:name)
-  else
-    let bufvars = getbufvar(a:bufnr, '')
-    if has_key(bufvars, a:name)
-      call remove(bufvars, a:name)
-    endif
-  endif
-endfunction
-
-" remove keymap for bufnr, not throw error
-function! coc#compat#buf_del_keymap(bufnr, mode, lhs) abort
-  if !bufloaded(a:bufnr)
-    return
-  endif
+function! coc#compat#tabnr_id(tabnr) abort
   if s:is_vim
-    try
-      call coc#api#exec('buf_del_keymap', [a:bufnr, a:mode, a:lhs])
-    catch /E31/
-      " ignore keymap doesn't exist
-    endtry
-  else
-    try
-      call nvim_buf_del_keymap(a:bufnr, a:mode, a:lhs)
-    catch /^Vim\%((\a\+)\)\=:E5555/
-      " ignore keymap doesn't exist
-    endtry
+    return coc#api#TabNrId(a:tabnr)
   endif
+  return nvim_list_tabpages()[a:tabnr - 1]
 endfunction
 
-function! coc#compat#buf_add_keymap(bufnr, mode, lhs, rhs, opts) abort
-  if !bufloaded(a:bufnr)
-    return
-  endif
+function! coc#compat#list_runtime_paths() abort
+  return coc#compat#call('list_runtime_paths', [])
+endfunction
+
+function! coc#compat#buf_execute(bufnr, cmds, ...) abort
+  let silent = get(a:, 1, 'silent')
   if s:is_vim
-    call coc#api#exec('buf_set_keymap', [a:bufnr, a:mode, a:lhs, a:rhs, a:opts])
+    let cmds = copy(a:cmds)->map({_, val -> 'legacy ' . val})
+    call coc#api#BufExecute(a:bufnr, cmds, silent)
   else
-    call nvim_buf_set_keymap(a:bufnr, a:mode, a:lhs, a:rhs, a:opts)
   endif
 endfunction
 
-" execute command or list of commands in window
-function! coc#compat#execute(winid, command, ...) abort
-  if a:winid < 0
-    return
-  endif
-  if type(a:command) == v:t_string
-    keepalt call win_execute(a:winid, a:command, get(a:, 1, ''))
-  elseif type(a:command) == v:t_list
-    keepalt call win_execute(a:winid, join(a:command, "\n"), get(a:, 1, ''))
-  endif
-endfunc
-
-function! coc#compat#trim(str)
-  return trim(a:str)
+function coc#compat#execute(command, ...) abort
+  return execute(a:command, get(a:, 1, 'silent'))
 endfunction
+
+function! coc#compat#eval(expr) abort
+  return eval(a:expr)
+endfunction
+
+function coc#compat#win_execute(id, command, ...) abort
+  return win_execute(a:id, a:command, get(a:, 1, 'silent'))
+endfunction
+
+" call api function on vim or neovim
+function! coc#compat#call(fname, args) abort
+  if s:is_vim
+    return call('coc#api#' . toupper(a:fname[0]) . a:fname[1:], a:args)
+  endif
+  return call('nvim_' . a:fname, a:args)
+endfunction
+" vim: set sw=2 ts=2 sts=2 et tw=78 foldlevel=0:
