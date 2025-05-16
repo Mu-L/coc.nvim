@@ -48,7 +48,7 @@ export default class FormatHandler {
           let tokenSource = new CancellationTokenSource()
           const tp = new Promise<undefined>(c => {
             timer = setTimeout(() => {
-              logger.warn(`Attempt to format ${event.document.uri} on save timed out after ${formatOnSaveTimeout}ms`)
+              logger.warn(`Format on save timeout after ${formatOnSaveTimeout}ms`, event.document.uri)
               tokenSource.cancel()
               c(undefined)
             }, formatOnSaveTimeout)
@@ -70,7 +70,7 @@ export default class FormatHandler {
     }))
     handler.addDisposable(events.on('TextInsert', async (bufnr: number, _info, character: string) => {
       let doc = workspace.getDocument(bufnr)
-      if (!events.pumvisible && doc && doc.attached) await this.tryFormatOnType(character, doc)
+      if (!events.completing && doc && doc.attached) await this.tryFormatOnType(character, doc)
     }))
     handler.addDisposable(commandManager.registerCommand('editor.action.formatDocument', async (uri?: string | number) => {
       const doc = uri ? workspace.getDocument(uri) : (await this.handler.getCurrentState()).doc
@@ -124,6 +124,7 @@ export default class FormatHandler {
       await doc.synchronize()
       return await languages.provideDocumentOnTypeEdits(ch, doc.textDocument, position, token)
     })
+    if (edits == null || events.completing) return false
     if (edits.length === 0) return true
     await doc.applyEdits(edits, false, true)
     this.logProvider(doc.bufnr, edits)

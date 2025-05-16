@@ -8,6 +8,7 @@ import { v4 as uuid } from 'uuid'
 import { Range, TextEdit, type Disposable } from 'vscode-languageserver-protocol'
 import type { CompleteResult, ExtendedCompleteItem } from '../completion/types'
 import events from '../events'
+import type { VirtualTextItem } from '../handler/inlayHint/buffer'
 import { sameFile } from '../util/fs'
 import { type Helper } from './helper'
 // make sure VIM_NODE_RPC take effect first
@@ -22,9 +23,14 @@ function disposeAll(disposables: Disposable[]): void {
 
 const disposables: Disposable[] = []
 let nvim: Neovim
+let featuredPropList = false
 beforeAll(async () => {
   await helper.setupVim()
   nvim = helper.workspace.nvim
+  // for text_padding_left of property
+  if (helper.workspace.has('patch-9.0.1782')) {
+    featuredPropList = true
+  }
 })
 
 afterEach(() => {
@@ -110,6 +116,67 @@ describe('vim api', () => {
   })
 })
 
+describe('call_function', () => {
+  beforeAll(async () => {
+    let folder = path.resolve(__dirname)
+    await nvim.command(`set runtimepath+=${folder}`)
+  })
+
+  it('should throw when call vim9 void function', async () => {
+    await expect(async () => {
+      await nvim.call('vim9#Execute', ['g:x = $"foo"'])
+    }).rejects.toThrow(Error)
+    // should not report error
+    nvim.call('vim9#Execute', ['g:x = $"abc"'], true)
+    let x = await nvim.getVar('x')
+    expect(x).toBe('abc')
+  })
+
+  it('should call dict function', async () => {
+    let res = await nvim.callDictFunction({ key: 1 }, 'legacy#dict_add')
+    expect(res).toBe(2)
+  })
+
+  it('should use notify for execute', async () => {
+    nvim.call('execute', 'let g:x = "a"."b"', true)
+    let res = await nvim.getVar('x')
+    expect(res).toBe('ab')
+  })
+
+  it('should not throw for win_execute', async () => {
+    // old style syntax
+    await nvim.call('execute', ['let g:y = "a"."b"'])
+    let y = await nvim.getVar('y')
+    expect(y).toBe('ab')
+    // new style syntax in vim9 function
+    let res = await nvim.call('vim9#WinExecute', [])
+    expect(res).toBe(true)
+    // old style syntax win_execute in legacy function
+    await nvim.call('legacy#win_execute', [])
+    let win = await nvim.window
+    let val = await win.getVar('foo')
+    expect(val).toBe('ab')
+  })
+
+  it('should eval with legacy syntax', async () => {
+    let res = await nvim.call('eval', ['"a"."b"'])
+    expect(res).toBe('ab')
+  })
+
+  it('should not conflict with global function', async () => {
+    await nvim.exec([
+      'function! Win_execute(...) abort',
+      ' throw "my error"',
+      'endfunction'
+    ].join('\n'))
+    let winid = await nvim.call('win_getid') as number
+    await nvim.call('win_execute', [winid, 'let w:f = "b"'])
+    let win = nvim.createWindow(winid)
+    let val = await win.getVar('f')
+    expect(val).toBe('b')
+  })
+})
+
 describe('client API', () => {
   it('should set current dir', async () => {
     await nvim.setDirectory(__dirname)
@@ -162,7 +229,7 @@ describe('client API', () => {
     let output = await nvim.exec(`echo 'foo'\necho 'bar'`, true)
     expect(output).toBe('foo\nbar')
     output = await nvim.exec(`let g:x = '5'\nunlet g:x`)
-    expect(output).toBeNull()
+    expect(output).toBe('')
   })
 
   it('should create new buffer', async () => {
@@ -212,11 +279,8 @@ describe('client API', () => {
       nvim.call('abc', [], true)
       await nvim.resumeNotification()
     }).rejects.toThrow(Error)
-  })
-
-  it('should call dict function', async () => {
-    let res = await nvim.callDictFunction({ key: 1 }, 'DictAdd')
-    expect(res).toBe(2)
+    let res = await nvim.getVvar('errmsg')
+    expect(res).toBe('')
   })
 
   it('should execute command', async () => {
@@ -228,9 +292,22 @@ describe('client API', () => {
     expect(wins.length).toBe(1)
   })
 
-  it('should eval', async () => {
-    let res = await nvim.eval('1 + 1')
-    expect(res).toBe(2)
+  it('should allow legacy script on command', async () => {
+    await nvim.command('let g:x = v:argv[0]." bar"')
+    let res = await nvim.getVar('x')
+    expect(res).toMatch('bar')
+  })
+
+  it('should not throw for silent error command', async () => {
+    await expect(async () => {
+      await nvim.command('abcdefg')
+    }).rejects.toThrow(/E492/)
+    await nvim.command('silent! abcdefg')
+  })
+
+  it('should use legacy eval', async () => {
+    let res = await nvim.eval('"a"."b"')
+    expect(res).toBe('ab')
   })
 
   it('should get api info', async () => {
@@ -257,8 +334,11 @@ describe('client API', () => {
   })
 
   it('should get command output', async () => {
-    let res = await nvim.commandOutput('version')
-    expect(res).toMatch(/VIM/)
+    let res = await nvim.commandOutput('echo "foo"."bar"')
+    expect(res).toMatch(/foobar/)
+    await expect(async () => {
+      await nvim.commandOutput('echonot_exists')
+    }).rejects.toThrow(/E492/)
   })
 
   it('should get line & set line', async () => {
@@ -280,9 +360,8 @@ describe('client API', () => {
   })
 
   it('should get vvar', async () => {
-    await nvim.command('let v:errmsg = "foo"')
-    let res = await nvim.getVvar('errmsg')
-    expect(res).toBe('foo')
+    let res = await nvim.getVvar('progpath')
+    expect(res).toMatch('vim')
   })
 
   it('should get current buffer, window, tabpage', async () => {
@@ -350,7 +429,7 @@ describe('Buffer API', () => {
         called = true
       }
     }, null, disposables)
-    Object.assign(doc, { lines: [''] })
+    Object.assign(doc, { lines: [''], _changedtick: doc.changedtick + 1 })
     await events.fire('CursorHold', [buffer.id, [1, 1]])
     expect(called).toBe(true)
     expect(doc.getLines()).toEqual(['1', '2'])
@@ -479,6 +558,84 @@ describe('Buffer API', () => {
     curr = await buf2.getVar('foo')
     expect(curr).toBeNull()
   })
+
+  it('should add virtual text', async () => {
+    let buf = await nvim.buffer
+    await nvim.call('setline', ['.', '  foo'])
+    let ns = await nvim.createNamespace('virtual-text')
+    buf.setVirtualText(ns, 0, [['bar', 'MoreMsg']], { text_align: 'above', indent: true })
+    let types = await nvim.call('coc#api#GetNamespaceTypes', [ns])
+    let props = await nvim.call('prop_list', [1, { types }]) as any[]
+    expect(props.length).toBe(1)
+    let prop = props[0]
+    if (featuredPropList) {
+      expect(prop.text_align).toBe('above')
+      expect(prop.text_padding_left).toBe(2)
+      expect(prop.text).toBe('bar')
+    }
+  })
+
+  it('should set multiple virtual texts', async () => {
+    let buf = await nvim.buffer
+    let arr = (new Array(10)).fill('foo')
+    await buf.setLines(arr)
+    let ns = await nvim.createNamespace('vtext-set')
+    let len = await buf.length
+    let items: VirtualTextItem[] = []
+    for (let i = 0; i < len; i++) {
+      items.push({
+        blocks: [[`${i}`, 'MoreMsg']],
+        line: i,
+        col: 1,
+        right_gravity: true,
+        virt_text_win_col: 0,
+        hl_mode: 'blend'
+      })
+    }
+    await nvim.call('coc#vtext#set', [buf.id, ns, items, false, 900])
+    let types = await nvim.call('coc#api#GetNamespaceTypes', [ns])
+    let props = await nvim.call('prop_list', [1, { types, end_lnum: len }]) as any[]
+    expect(props.length).toBe(10)
+    let prop = props[0]
+    expect(prop.lnum).toBe(1)
+    expect(prop.col).toBe(1)
+    if (featuredPropList) {
+      expect(prop.text).toBe('0')
+    }
+  })
+
+  it('should update highlights', async () => {
+    let buf = await nvim.buffer
+    await buf.setLines(['foo', 'bar'])
+    let hls = []
+    hls.push({ lnum: 0, colStart: 0, colEnd: 3, hlGroup: 'MoreMsg' })
+    hls.push({ lnum: 1, colStart: 1, colEnd: 3, hlGroup: 'MoreMsg' })
+    buf.updateHighlights('test', hls, { priority: 80 })
+    let arr = await buf.getHighlights('test')
+    expect(arr.length).toBe(2)
+    let obj = {}
+    for (const key of ['hlGroup', 'lnum', 'colStart', 'colEnd']) {
+      obj[key] = arr[0][key]
+    }
+    expect(obj).toEqual(hls[0])
+    await nvim.call('coc#highlight#clear_all', [])
+    buf.updateHighlights('test', [hls[0]], { priority: 80, start: 0, end: 1 })
+    arr = await buf.getHighlights('test')
+    expect(arr.length).toBe(1)
+    let hl = { lnum: 1, colStart: 0, colEnd: -1, hlGroup: 'MoreMsg' }
+    buf.updateHighlights('test', [hl], { priority: 80 })
+    arr = await buf.getHighlights('test')
+    expect(arr.length).toBe(1)
+  })
+
+  it('should highlight ranges', async () => {
+    let buf = await nvim.buffer
+    await buf.setLines(['foo', 'bar'])
+    const range = Range.create(0, 0, 2, 0)
+    buf.highlightRanges('test', 'MoreMsg', [range])
+    let arr = await buf.getHighlights('test')
+    expect(arr.length).toBe(2)
+  })
 })
 
 describe('Window API', () => {
@@ -544,13 +701,18 @@ describe('Window API', () => {
     await win.setOption('relativenumber', false)
     await expect(async () => {
       await win.getOption('not_exists')
-    }).rejects.toThrow('Invalid option name')
+    }).rejects.toThrow('Invalid')
+    await expect(async () => {
+      await win.setOption('not_exists', '')
+    }).rejects.toThrow('Invalid')
   })
 
   it('should get and set var', async () => {
     await win.setVar('foo', 'bar')
     let curr = await win.getVar('foo')
     expect(curr).toBe('bar')
+    let res = await win.getVar('not_exists')
+    expect(res).toBeNull()
     win.deleteVar('foo')
     curr = await win.getVar('foo')
     expect(curr).toBe(null)
@@ -570,6 +732,25 @@ describe('Window API', () => {
     valid = await win.valid
     expect(valid).toBe(false)
     await nvim.command('only!')
+  })
+
+  it('should add and clear matches', async () => {
+    let buf = await nvim.buffer
+    let arr = new Array(10)
+    arr.fill('foo')
+    await buf.setLines(arr)
+    let ranges: Range[] = []
+    for (let i = 0; i < 10; i++) {
+      ranges.push(Range.create(i, 0, i, 3))
+    }
+    let win = await nvim.window
+    let ids = await win.highlightRanges('MoreMsg', ranges)
+    expect(ids.length).toBeGreaterThan(0)
+    let matches = await helper.getMatches('MoreMsg')
+    expect(matches.length).toBe(10)
+    win.clearMatches(ids)
+    matches = await helper.getMatches('MoreMsg')
+    expect(matches.length).toBe(0)
   })
 })
 
@@ -611,6 +792,20 @@ describe('Popup', () => {
     expect(tabpage.id).toBeGreaterThan(0)
     await win.close(true)
     await nvim.call('popup_clear', [])
+  })
+
+  it('should create inputBox', async () => {
+    let input = await helper.plugin.window.createInputBox('title', '')
+    input.title = 'new title'
+    let curr: string
+    input.onDidChange(text => {
+      curr = text
+    })
+    await nvim.input('abc')
+    await helper.waitValue((() => {
+      return curr
+    }), 'abc')
+    input.dispose()
   })
 })
 

@@ -110,6 +110,7 @@ afterAll(async () => {
 afterEach(async () => {
   await helper.reset()
   disposeAll(disposables)
+  semanticTokens.setStaticConfiguration()
 })
 
 const defaultResult = {
@@ -280,14 +281,13 @@ describe('semanticTokens', () => {
     it('should only highlight limited range on update', async () => {
       helper.updateConfiguration('semanticTokens.filetypes', ['vim'])
       let doc = await helper.createDocument('t.vim')
-      let fn = jest.fn()
+      let called = false
       disposables.push(languages.registerDocumentSemanticTokensProvider([{ language: 'vim' }], {
         provideDocumentSemanticTokens: (doc, token) => {
           let text = doc.getText()
           if (!text.trim()) {
             return Promise.resolve({ resultId: '1', data: [] })
           }
-          fn()
           let lines = text.split('\n')
           let data = [0, 0, 1, 1, 0]
           for (let i = 0; i < lines.length; i++) {
@@ -299,17 +299,19 @@ describe('semanticTokens', () => {
               resolve(undefined)
             })
             let timer = setTimeout(() => {
+              called = true
               resolve({ resultId: '1', data })
             }, 10)
           })
         }
       }, legend))
       let item = await semanticTokens.getCurrentItem()
+      item['_dirty'] = true
       await item.doHighlight(false, 0)
       let newLine = 'l\n'
       await doc.applyEdits([{ range: Range.create(0, 0, 0, 0), newText: `${newLine.repeat(1000)}` }])
       await item.doHighlight(false, 0)
-      expect(fn).toHaveBeenCalled()
+      await helper.waitValue(() => called, true)
       let buf = doc.buffer
       let markers = await buf.getExtMarks(ns, 0, -1, { details: true })
       let len = markers.length
@@ -813,8 +815,11 @@ describe('semanticTokens', () => {
   })
 
   describe('Server cancelled', () => {
-    it('should retrigger range request on server cancel', async () => {
+    beforeEach(() => {
       helper.updateConfiguration('semanticTokens.filetypes', ['*'])
+    })
+
+    it('should retrigger range request on server cancel', async () => {
       let times = 0
       disposables.push(languages.registerDocumentRangeSemanticTokensProvider([{ language: '*' }], {
         provideDocumentRangeSemanticTokens: () => {

@@ -80,6 +80,19 @@ describe('FloatFactory', () => {
       floatFactory.close()
     })
 
+    it('should create fixed float window', async () => {
+      let docs: Documentation[] = [{
+        filetype: 'markdown',
+        content: 'foo'
+      }]
+      await floatFactory.show(docs, { position: 'fixed', focusable: true, bottom: 1, right: 1 })
+      let res = await nvim.call('screenpos', [floatFactory.window.id, 1, 1]) as any
+      expect(res).toBeDefined()
+      expect(res.col > 150).toBe(true)
+      expect(res.row > 70).toBe(true)
+      floatFactory.close()
+    })
+
     it('should create window', async () => {
       let docs: Documentation[] = [{
         filetype: 'markdown',

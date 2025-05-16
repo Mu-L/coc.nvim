@@ -186,6 +186,12 @@ describe('LinesTextDocument', () => {
     let reason = getNotAttachReason('', 1, 99)
     expect(reason).toMatch('exceed')
   })
+
+  it('should get intersect range', async () => {
+    let doc = createTextDocument(['foo', 'bar'])
+    let res = doc.intersectWith(Range.create(0, 0, 2, 1))
+    expect(res).toEqual(Range.create(0, 0, 2, 0))
+  })
 })
 
 describe('Document', () => {
@@ -728,7 +734,7 @@ describe('Document', () => {
       expect(markers.length).toBe(0)
     })
 
-    it('should add/clear highlights of current window', async () => {
+    it('should add and clear highlights of current window', async () => {
       let buf = await nvim.buffer
       await buf.setLines(['你好', 'world'], { start: 0, end: -1, strictIndexing: false })
       let win = await nvim.window
@@ -737,9 +743,8 @@ describe('Document', () => {
         Range.create(1, 0, 1, 3)
       ]
       let res = await win.highlightRanges('Search', ranges)
-      expect(res.length).toBe(2)
+      expect(res.length).toBe(1)
       let matches = await nvim.call('getmatches', [win.id]) as any
-      expect(matches.length).toBe(2)
       nvim.pauseNotification()
       win.clearMatchGroup('Search')
       await nvim.resumeNotification()

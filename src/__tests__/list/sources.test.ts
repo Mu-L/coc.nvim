@@ -2,7 +2,7 @@ import { Neovim } from '@chemzqm/neovim'
 import fs from 'fs'
 import os from 'os'
 import { v4 as uuid } from 'uuid'
-import { CancellationToken, Diagnostic, DiagnosticSeverity, Disposable, DocumentLink, DocumentSymbol, Emitter, Location, Position, Range, SymbolInformation, SymbolKind, SymbolTag, TextEdit } from 'vscode-languageserver-protocol'
+import { CancellationToken, Diagnostic, DiagnosticSeverity, Disposable, DocumentLink, Emitter, Location, Position, Range, SymbolInformation, SymbolKind, SymbolTag, TextEdit } from 'vscode-languageserver-protocol'
 import { URI } from 'vscode-uri'
 import diagnosticManager, { DiagnosticItem } from '../../diagnostic/manager'
 import events from '../../events'
@@ -10,22 +10,20 @@ import extensions from '../../extension/index'
 import { ExtensionInfo, ExtensionManager } from '../../extension/manager'
 import { ExtensionStat } from '../../extension/stat'
 import languages from '../../languages'
-import BasicList, { PreviewOptions, toVimFiletype } from '../../list/basic'
-import { fixWidth, formatListItems, formatPath, formatUri, UnformattedListItem } from '../../list/formatting'
+import BasicList, { PreviewOptions } from '../../list/basic'
 import manager from '../../list/manager'
-import { convertToLabel } from '../../list/source/diagnostics'
-import ExtensionList, { getExtensionPrefix, getExtensionPriority, sortExtensionItem } from '../../list/source/extensions'
+import DiagnosticsList, { convertToLabel } from '../../list/source/diagnostics'
+import ExtensionList from '../../list/source/extensions'
 import FolderList from '../../list/source/folders'
-import { mruScore } from '../../list/source/lists'
-import OutlineList, { contentToItems, getFilterText, loadCtagsSymbols, symbolsToListItems } from '../../list/source/outline'
-import SymbolsList, { sortSymbolItems } from '../../list/source/symbols'
+import OutlineList from '../../list/source/outline'
+import SymbolsList from '../../list/source/symbols'
 import { ListArgument, ListContext, ListItem, ListOptions } from '../../list/types'
 import Document from '../../model/document'
 import services, { IServiceProvider, ServiceStat } from '../../services'
 import { QuickfixItem } from '../../types'
 import { disposeAll } from '../../util'
 import * as extension from '../../util/extensionRegistry'
-import { path, which } from '../../util/node'
+import { path } from '../../util/node'
 import { Registry } from '../../util/registry'
 import window from '../../window'
 import workspace from '../../workspace'
@@ -141,112 +139,6 @@ afterEach(async () => {
   await helper.reset()
 })
 
-describe('formatting', () => {
-  it('should format path', () => {
-    expect(formatPath('short', 'home')).toMatch('home')
-    expect(formatPath('hidden', 'path')).toBe('')
-    expect(formatPath('full', __filename)).toMatch('sources.test.ts')
-    expect(formatPath('short', __filename)).toMatch('sources.test.ts')
-    expect(formatPath('filename', __filename)).toMatch('sources.test.ts')
-  })
-
-  it('should format uri', () => {
-    let cwd = process.cwd()
-    expect(formatUri('http://www.example.com', cwd)).toMatch('http')
-    expect(formatUri(URI.file(__filename).toString(), cwd)).toMatch('sources')
-    expect(formatUri(URI.file(os.tmpdir()).toString(), cwd)).toMatch(os.tmpdir())
-  })
-
-  it('should fixWidth', () => {
-    expect(fixWidth('a'.repeat(10), 2)).toBe('a.')
-  })
-
-  it('should sort symbols', () => {
-    const assert = (a, b, n) => {
-      expect(sortSymbolItems(a, b)).toBe(n)
-    }
-    assert({ data: { score: 1 } }, { data: { score: 2 } }, 1)
-    assert({ data: { kind: 1 } }, { data: { kind: 2 } }, -1)
-    assert({ data: { file: 'aa' } }, { data: { file: 'b' } }, 1)
-  })
-
-  it('should format list items', () => {
-    expect(formatListItems(false, [])).toEqual([])
-    let items: UnformattedListItem[] = [{
-      label: ['a', 'b', 'c']
-    }]
-    expect(formatListItems(false, items)).toEqual([{
-      label: 'a\tb\tc'
-    }])
-    items = [{
-      label: ['a', 'b', 'c']
-    }, {
-      label: ['foo', 'bar', 'go']
-    }]
-    expect(formatListItems(true, items)).toEqual([{
-      label: 'a  \tb  \tc '
-    }, {
-      label: 'foo\tbar\tgo'
-    }])
-  })
-})
-
-describe('Extensions util', () => {
-  it('should sortExtensionItem', () => {
-    expect(sortExtensionItem({ data: { priority: 1 } }, { data: { priority: 0 } })).toBe(-1)
-    expect(sortExtensionItem({ data: { id: 'a' } }, { data: { id: 'b' } })).toBe(1)
-    expect(sortExtensionItem({ data: { id: 'b' } }, { data: { id: 'a' } })).toBe(-1)
-  })
-
-  it('should get extension prefix', () => {
-    expect(getExtensionPrefix('')).toBe('+')
-    expect(getExtensionPrefix('disabled')).toBe('-')
-    expect(getExtensionPrefix('activated')).toBe('*')
-    expect(getExtensionPrefix('unknown')).toBe('?')
-  })
-
-  it('should get extension priority', () => {
-    expect(getExtensionPriority('')).toBe(0)
-    expect(getExtensionPriority('unknown')).toBe(2)
-    expect(getExtensionPriority('activated')).toBe(1)
-    expect(getExtensionPriority('disabled')).toBe(-1)
-  })
-})
-
-describe('Outline util', () => {
-  it('should getFilterText', () => {
-    expect(getFilterText(DocumentSymbol.create('name', '', SymbolKind.Function, Range.create(0, 0, 0, 1), Range.create(0, 0, 0, 1)), 'kind')).toBe('name')
-    expect(getFilterText(DocumentSymbol.create('name', '', SymbolKind.Function, Range.create(0, 0, 0, 1), Range.create(0, 0, 0, 1)), '')).toBe('nameFunction')
-  })
-
-  it('should load items by ctags', async () => {
-    let doc = await workspace.document
-    let spy = jest.spyOn(which, 'sync').mockImplementation(() => {
-      return ''
-    })
-    let items = await loadCtagsSymbols(doc, nvim, CancellationToken.None)
-    expect(items).toEqual([])
-    spy.mockRestore()
-    doc = await helper.createDocument(__filename)
-    items = await loadCtagsSymbols(doc, nvim, CancellationToken.None)
-    expect(Array.isArray(items)).toBe(true)
-  })
-
-  it('should convert symbols to list items', async () => {
-    let symbols: DocumentSymbol[] = []
-    symbols.push(DocumentSymbol.create('function', '', SymbolKind.Function, Range.create(1, 0, 1, 1), Range.create(1, 0, 1, 1)))
-    symbols.push(DocumentSymbol.create('class', '', SymbolKind.Class, Range.create(0, 0, 0, 1), Range.create(0, 0, 0, 1)))
-    let items = symbolsToListItems(symbols, 'lsp:/1', 'class')
-    expect(items.length).toBe(1)
-    expect(items[0].data.kind).toBe('Class')
-  })
-
-  it('should convert to list items', async () => {
-    let doc = await workspace.document
-    expect(contentToItems('a\tb\t2\td\n\n', doc).length).toBe(1)
-  })
-})
-
 describe('configuration', () => {
   beforeEach(() => {
     let list = new OptionList()
@@ -283,13 +175,6 @@ describe('configuration', () => {
 })
 
 describe('BasicList', () => {
-  describe('getFiletype()', () => {
-    it('should get filetype', async () => {
-      expect(toVimFiletype('latex')).toBe('tex')
-      expect(toVimFiletype('foo')).toBe('foo')
-    })
-  })
-
   describe('parse arguments', () => {
     it('should parse args #1', () => {
       let list = new OptionList()
@@ -338,32 +223,6 @@ describe('BasicList', () => {
       await list.jumpTo(loc, 'edit')
       let bufname = await nvim.call('bufname', ['%'])
       expect(bufname).toMatch('sources.test.ts')
-    })
-  })
-
-  describe('convertLocation()', () => {
-    let list: OptionList
-    beforeAll(() => {
-      list = new OptionList()
-    })
-    it('should convert uri', async () => {
-      let uri = URI.file(__filename).toString()
-      let res = await list.convertLocation(uri)
-      expect(res.uri).toBe(uri)
-    })
-
-    it('should convert location with line', async () => {
-      let uri = URI.file(__filename).toString()
-      let res = await list.convertLocation({ uri, line: 'convertLocation()', text: 'convertLocation' })
-      expect(res.uri).toBe(uri)
-      res = await list.convertLocation({ uri, line: 'convertLocation()' })
-      expect(res.uri).toBe(uri)
-    })
-
-    it('should convert location with custom schema', async () => {
-      let uri = 'test:///foo'
-      let res = await list.convertLocation({ uri, line: 'convertLocation()' })
-      expect(res.uri).toBe(uri)
     })
   })
 
@@ -615,7 +474,6 @@ describe('list sources', () => {
   })
 
   describe('diagnostics', () => {
-
     function createDiagnostic(msg: string, range?: Range, severity?: DiagnosticSeverity, code?: number): Diagnostic {
       range = range ? range : Range.create(0, 0, 0, 1)
       return Diagnostic.create(range, msg, severity || DiagnosticSeverity.Error, code)
@@ -670,72 +528,41 @@ describe('list sources', () => {
       await manager.start(['diagnostics'])
       await manager.session?.ui.ready
       expect(manager.isActivated).toBe(true)
-
       let buf = await nvim.buffer
       let lines = await buf.lines
       expect(lines.length).toEqual(10)
     })
 
-    it('should load diagnostics for buffer only', async () => {
-      await createDocument('a')
-      await createDocument('b')
-      await manager.start(['diagnostics', '--buffer'])
-      await manager.session?.ui.ready
-      expect(manager.isActivated).toBe(true)
-
-      let buf = await nvim.buffer
-      let lines = await buf.lines
-      expect(lines.length).toEqual(5)
-    })
-
-    it('should load diagnostics for workspace folder only', async () => {
+    it('should filter diagnostics', async () => {
       await createDocument('list/workspace-folder1/a')
       await createDocument('list/workspace-folder1/b')
-
       await createDocument('list/workspace-folder2/c')
       await createDocument('list/workspace-folder2/d')
-
-      await createDocument('e')
-      await createDocument('f')
-
       const workspaceFolder = path.join(__dirname, 'workspace-folder1')
-      jest.spyOn(workspace, 'getWorkspaceFolder').mockReturnValue({
-        name: 'workspace-folder1',
-        uri: URI.file(workspaceFolder).toString()
-      })
-      await manager.start(['diagnostics', '--workspace-folder'])
-      await manager.session?.ui.ready
-      expect(manager.isActivated).toBe(true)
-
-      let buf = await nvim.buffer
-      let lines = await buf.lines
-      // A Total of 10 for buf a & b
-      expect(lines.length).toEqual(10)
-    })
-
-    it('should load no diagnostics for buffers outside workspace folder', async () => {
-      await createDocument('list/workspace-folder1/a')
-      await createDocument('list/workspace-folder1/b')
-
-      await createDocument('list/workspace-folder2/c')
-      await createDocument('list/workspace-folder2/d')
-
-      await createDocument('e')
-      await createDocument('f')
-
-      const workspaceFolder = path.join(__dirname, 'workspace-folder4')
-      jest.spyOn(workspace, 'getWorkspaceFolder').mockReturnValue({
-        name: 'workspace-folder4',
-        uri: URI.file(workspaceFolder).toString()
-      })
-      await manager.start(['diagnostics', '--workspace-folder'])
-      await manager.session?.ui.ready
-      expect(manager.isActivated).toBe(true)
-
-      let buf = await nvim.buffer
-      let lines = await buf.lines
-      // No results line just visible
-      expect(lines.length).toEqual(1)
+      let list = new DiagnosticsList(manager, false)
+      {
+        let res = await list.filterDiagnostics({})
+        expect(res.length).toBe(20)
+        let spy = jest.spyOn(workspace, 'getWorkspaceFolder').mockReturnValue({
+          name: 'workspace-folder1',
+          uri: URI.file(workspaceFolder).toString()
+        })
+        res = await list.filterDiagnostics({ 'workspace-folder': true })
+        expect(res.length).toBe(10)
+        spy.mockRestore()
+        spy = jest.spyOn(workspace, 'getWorkspaceFolder').mockReturnValue(undefined)
+        res = await list.filterDiagnostics({ 'workspace-folder': true })
+        expect(res.length).toBe(20)
+        spy.mockRestore()
+      }
+      {
+        let res = await list.filterDiagnostics({ buffer: true })
+        expect(res.length).toBe(5)
+      }
+      {
+        let res = await list.filterDiagnostics({ level: 'error' })
+        expect(res.length).toBe(8)
+      }
     })
 
     it('should refresh on diagnostics refresh', async () => {
@@ -745,12 +572,14 @@ describe('list sources', () => {
       expect(manager.isActivated).toBe(true)
       let diagnostics: Diagnostic[] = []
       let collection = diagnosticManager.create('test')
+      diagnostics.push(createDiagnostic('error', Range.create(0, 0, 0, 2), DiagnosticSeverity.Error, 1000))
       diagnostics.push(createDiagnostic('error', Range.create(2, 0, 2, 2), DiagnosticSeverity.Error, 1009))
       collection.set(doc.uri, diagnostics)
-      await helper.wait(50)
       let buf = await nvim.buffer
-      let lines = await buf.lines
-      expect(lines.length).toBeGreaterThan(0)
+      await helper.waitValue(async () => {
+        let n = await buf.length
+        return n > 1
+      }, true)
     })
   })
 
@@ -851,31 +680,20 @@ describe('list sources', () => {
       await nvim.input('<C-u>')
       await nvim.input('<cr>')
       await p
-      p = doAction('newfile', res[0])
-      await helper.waitFloat()
-      await helper.wait(30)
-      await nvim.input('<C-u>')
-      await nvim.input('<cr>')
-      await p
+      let spy = jest.spyOn(window, 'requestInput').mockReturnValue(Promise.resolve(''))
+      await doAction('newfile', res[0])
+      spy.mockRestore()
       fs.rmSync(path.join(os.tmpdir(), uid), { recursive: true, force: true })
       let filepath = path.join(os.tmpdir(), uid, 'bar')
-      let spy = jest.spyOn(window, 'requestInput').mockImplementation(() => {
-        return Promise.resolve(filepath)
-      })
+      spy = jest.spyOn(window, 'requestInput').mockReturnValue(Promise.resolve(filepath))
       await doAction('newfile', res[0])
       let exists = fs.existsSync(filepath)
       expect(exists).toBe(true)
       spy.mockRestore()
-      workspace.reset()
     })
   })
 
   describe('lists', () => {
-    it('should get list score', () => {
-      expect(mruScore(['foo'], 'foo')).toBe(1)
-      expect(mruScore([], 'foo')).toBe(-1)
-    })
-
     it('should load lists source', async () => {
       await manager.start(['lists'])
       await manager.session?.ui.ready
