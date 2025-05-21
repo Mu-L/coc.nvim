@@ -2,6 +2,7 @@
 import { Range } from 'vscode-languageserver-types'
 import Document from '../model/document'
 import { equals } from '../util/object'
+import { toText } from '../util/string'
 import { getWellformedRange } from '../util/textedit'
 import type TextRange from './textRange'
 
@@ -21,6 +22,10 @@ export interface SurrondChange {
    * delete count & insert text
    */
   append: [number, string]
+  /**
+   * Remove the range when true
+   */
+  remove: boolean
 }
 
 /**
@@ -29,7 +34,7 @@ export interface SurrondChange {
 export function splitRange(doc: Document, range: Range): Range[] {
   let splited: Range[] = []
   for (let i = range.start.line; i <= range.end.line; i++) {
-    let curr = doc.getline(i) || ''
+    let curr = toText(doc.getline(i))
     let sc = i == range.start.line ? range.start.character : 0
     let ec = i == range.end.line ? range.end.character : curr.length
     if (sc == ec) continue
@@ -75,14 +80,15 @@ export function getChange(r: TextRange, range: Range, newText: string): TextChan
     let idx = text.indexOf(newText)
     if (idx !== -1) {
       let prepend: [number, string] = [idx, '']
-      let append: [number, string] = [text.length - newText.length - idx, '']
-      return { prepend, append }
+      let n = text.length - newText.length - idx
+      let append: [number, string] = [n, '']
+      return { prepend, append, remove: r.text.length === n }
     }
     idx = newText.indexOf(text)
     if (idx !== -1) {
       let prepend: [number, string] = [0, newText.slice(0, idx)]
       let append: [number, string] = [0, newText.slice(- (newText.length - text.length - idx))]
-      return { prepend, append }
+      return { prepend, append, remove: false }
     }
   }
   if (equals(r.range.end, range.end)) {

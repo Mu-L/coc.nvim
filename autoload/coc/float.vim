@@ -240,7 +240,7 @@ function! coc#float#create_float_win(winid, bufnr, config) abort
           \ 'scrollbarhighlight': 'CocFloatSbar',
           \ 'thumbhighlight': 'CocFloatThumb',
           \ }
-    let winid = popup_create(bufnr, opts)
+    noa let winid = popup_create(bufnr, opts)
     call s:set_float_defaults(winid, a:config)
     call win_execute(winid, 'exe '.lnum)
     call coc#float#vim_buttons(winid, a:config)
@@ -1169,7 +1169,8 @@ function! s:close_win(winid, noautocmd) abort
   endif
   " vim not throw for none exists winid
   if s:is_vim
-    call popup_close(a:winid)
+    let prefix = a:noautocmd ? 'noa ': ''
+    exe prefix.'call popup_close('.a:winid.')'
   else
     if nvim_win_is_valid(a:winid)
       let prefix = a:noautocmd ? 'noa ': ''
@@ -1342,13 +1343,11 @@ endfunction
 
 function! s:win_setview(winid, topline, lnum) abort
   if s:is_vim
-    call coc#compat#execute(a:winid, 'exe '.a:lnum)
-    call popup_setoptions(a:winid, {
-          \ 'firstline': a:topline,
-          \ })
+    call win_execute(a:winid, 'exe '.a:lnum)
+    call popup_setoptions(a:winid, { 'firstline': a:topline })
   else
-    call coc#compat#execute(a:winid, 'call winrestview({"lnum":'.a:lnum.',"topline":'.a:topline.'})')
-    call timer_start(10, { -> coc#float#nvim_refresh_scrollbar(a:winid) })
+    call win_execute(a:winid, 'call winrestview({"lnum":'.a:lnum.',"topline":'.a:topline.'})')
+    call timer_start(1, { -> coc#float#nvim_refresh_scrollbar(a:winid) })
   endif
 endfunction
 
@@ -1424,7 +1423,7 @@ function! s:add_highlights(winid, config, create) abort
   for obj in codes
     let hlGroup = get(obj, 'hlGroup', v:null)
     if !empty(hlGroup)
-      let obj['hlGroup'] = coc#highlight#compose_hlgroup(hlGroup, bgGroup)
+      let obj['hlGroup'] = coc#hlgroup#compose_hlgroup(hlGroup, bgGroup)
     endif
   endfor
   call coc#highlight#add_highlights(a:winid, codes, highlights)
@@ -1457,7 +1456,7 @@ function! s:get_borderhighlight(config) abort
   let hlgroup = get(a:config, 'highlight', 'CocFloating')
   let borderhighlight = get(a:config, 'borderhighlight', 'CocFloatBorder')
   let highlight = type(borderhighlight) == 3 ? borderhighlight[0] : borderhighlight
-  return coc#highlight#compose_hlgroup(highlight, hlgroup)
+  return coc#hlgroup#compose_hlgroup(highlight, hlgroup)
 endfunction
 
 function! s:has_shadow(config) abort

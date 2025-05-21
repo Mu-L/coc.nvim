@@ -38,7 +38,9 @@ export default class WorkspaceHandler {
     Object.defineProperty(window, 'openLocalConfig', {
       get: () => this.openLocalConfig.bind(this)
     })
-
+    extensions.onDidUnloadExtension(name => {
+      workspace.autocmds.removeExtensionAutocmds(name)
+    })
     commands.register({
       id: 'workspace.openLocation',
       execute: async (winid: number, loc: Location, openCommand?: string) => {
@@ -218,8 +220,9 @@ export default class WorkspaceHandler {
     })
   }
 
-  public async doAutocmd(id: string, args: any[]): Promise<void> {
-    await workspace.autocmds.doAutocmd(id, args)
+  public async doAutocmd(id: number, args: any[]): Promise<void> {
+    let timeout = workspace.getConfiguration('editor', null).get<number>('timeout', 1000)
+    await workspace.autocmds.doAutocmd(id, args, timeout)
   }
 
   public async getConfiguration(key: string): Promise<WorkspaceConfiguration> {

@@ -3956,6 +3956,8 @@ declare module 'coc.nvim' {
     script?: boolean
     expr?: boolean
     unique?: boolean
+    // vim9 only
+    special?: boolean
   }
 
   export interface BufferHighlight {
@@ -4016,6 +4018,48 @@ declare module 'coc.nvim' {
      * vim9 only
      */
     text_wrap?: 'wrap' | 'truncate'
+  }
+
+  export interface AugroupOption {
+    /**
+     * Clear the all autocmds before create autocmd group, default to `true`.
+     */
+    clear?: boolean
+  }
+
+  interface AutocmdOption {
+    /**
+     * Group name or group id from `nvim.createAugroup()`, see `:h autocmd-groups`.
+     */
+    group?: string | number
+    /**
+     * Pattern to match, see `:h autocmd-pattern`.
+     */
+    pattern?: string | string[]
+    /**
+     * Buffer number for buflocal autocommand, see `:h autocmd-buflocal`.
+     */
+    buffer?: number
+    /**
+    * Description test, not used on vim9.
+    */
+    desc?: string
+    /**
+     * Vim command to run when trigger autocommand.
+     */
+    command?: string
+    /**
+     * See `:h autocmd-once`.
+     */
+    once?: boolean
+    /**
+     * See `:h autocmd-nested`.
+     */
+    nested?: boolean
+    /**
+     * Vim9 only, see `:h autocmd_add()`
+     */
+    replace?: boolean
   }
 
   interface BaseApi<T> {
@@ -4094,7 +4138,7 @@ declare module 'coc.nvim' {
     /**
      * Echo error message to vim and log error stack.
      */
-    echoError(msg: unknown): void
+    echoError(error: Error | string): void
 
     /**
      * Check if `nvim_` function exists.
@@ -4348,12 +4392,38 @@ declare module 'coc.nvim' {
      * @param {VimValue | VimValue[]} args
      * @returns {Promise<any>}
      */
-    call(fname: string, args?: VimValue | VimValue[]): Promise<any>
+    call(fname: string, args?: VimValue | VimValue[]): Promise<unknown>
 
     /**
      * Call a vim function by notification.
      */
     call(fname: string, args: VimValue | VimValue[], isNotify: true): void
+
+    /**
+     * Use call command `:h channel-commands` to call function on vim9.
+     * Warning: NodeJS side only get the 'ERROR' text on error, to get error message,
+     * see `:h coc-api-channel`
+     */
+    callVim(fname: string, args?: VimValue | VimValue[]): Promise<unknown>
+
+    /**
+     * Use call command `:h channel-commands` to call function on vim9.
+     * Warning: errors not exists on NodeJS side, see `:h coc-api-channel`
+     */
+    callVim(fname: string, args: VimValue | VimValue[], isNotify: true): void
+
+    /**
+     * Use expr command `:h channel-commands` to eval expression on vim9.
+     * Warning: NodeJS side only get the 'ERROR' text on error, to get error message,
+     * see `:h coc-api-channel`
+     */
+    evalVim(expr: string): Promise<unknown>
+
+    /**
+     * Use ex command `:h channel-commands` to execute command on vim9.
+     * Warning: errors not exists on NodeJS side, see `:h coc-api-channel`
+     */
+    exVim(command: string): void
 
     /**
      * Call a vim function with timer of timeout 0.
@@ -4464,6 +4534,33 @@ declare module 'coc.nvim' {
      * Gets width(display cells) of string.
      */
     strWidth(str: string): Promise<number>
+
+    /**
+     * Create autocmd group with {name} and {option}
+     */
+    createAugroup(name: string, option?: AugroupOption): Promise<number>
+
+    /**
+     * Create autocmd group with {name} and {option}, use notification to vim.
+     */
+    createAugroup(name: string, option: AugroupOption, isNotify: true): void
+
+    /**
+     * Create autocmd with {event} and {option}
+     */
+    createAutocmd(event: string | string[], option?: AutocmdOption): Promise<number>
+
+    /**
+     * Create autocmd with {event} and {option}
+     */
+    createAutocmd(event: string | string[], option: AutocmdOption, isNotify: true): void
+
+    /**
+     * Delete autocmd with {id} returned from `nvim.createAutocmd()`
+     * Notice: vim9 can't support delete specific autocmd yet, autocmds which
+     * have the same `group` `event` `pattern` are all cleared.
+     */
+    deleteAutocmd(id: number): void
 
     /**
      * Gets a list of dictionaries representing attached UIs.
@@ -5100,9 +5197,8 @@ declare module 'coc.nvim' {
     readonly abbr?: string
     readonly source: string
     readonly isSnippet: boolean
-    readonly kind?: string
+    readonly kind?: string | CompletionItemKind
     readonly menu?: string
-    readonly user_data?: string
   }
 
   export interface LocationListItem {
@@ -6879,7 +6975,8 @@ declare module 'coc.nvim' {
 
   // events module {{
   type EventResult = void | Promise<void>
-  type MoveEvents = 'CursorMoved' | 'CursorMovedI' | 'CursorHold' | 'CursorHoldI'
+  type MoveEvents = 'CursorMoved' | 'CursorMovedI'
+  type HoldEvents = 'CursorHold' | 'CursorHoldI'
   type BufEvents = 'BufHidden' | 'BufEnter' | 'BufWritePost'
     | 'InsertLeave' | 'TermOpen' | 'InsertEnter'
     | 'BufCreate' | 'BufUnload' | 'BufWritePre' | 'Enter'
@@ -6887,7 +6984,7 @@ declare module 'coc.nvim' {
   type InsertChangeEvents = 'TextChangedP' | 'TextChangedI'
   type TaskEvents = 'TaskExit' | 'TaskStderr' | 'TaskStdout'
   type WindowEvents = 'WinLeave' | 'WinEnter' | 'WinClosed'
-  type AllEvents = BufEvents | EmptyEvents | MoveEvents | TaskEvents | WindowEvents | InsertChangeEvents | 'CompleteDone' | 'TextChanged' | 'MenuPopupChanged' | 'InsertCharPre' | 'FileType' | 'BufWinEnter' | 'BufWinLeave' | 'VimResized' | 'DirChanged' | 'OptionSet' | 'Command' | 'BufReadCmd' | 'GlobalChange' | 'InputChar' | 'WinLeave' | 'MenuInput' | 'PromptInsert' | 'FloatBtnClick' | 'InsertSnippet' | 'PromptKeyPress' | 'WinScrolled'
+  type AllEvents = BufEvents | EmptyEvents | HoldEvents | MoveEvents | TaskEvents | WindowEvents | InsertChangeEvents | 'CompleteDone' | 'TextChanged' | 'MenuPopupChanged' | 'InsertCharPre' | 'FileType' | 'BufWinEnter' | 'BufWinLeave' | 'VimResized' | 'DirChanged' | 'OptionSet' | 'Command' | 'BufReadCmd' | 'GlobalChange' | 'InputChar' | 'WinLeave' | 'MenuInput' | 'PromptInsert' | 'FloatBtnClick' | 'InsertSnippet' | 'PromptKeyPress' | 'WinScrolled' | 'WindowVisible'
   type OptionValue = string | number | boolean
   type PromptWidowKeys = 'C-j' | 'C-k' | 'C-n' | 'C-p' | 'up' | 'down'
 
@@ -6961,6 +7058,15 @@ declare module 'coc.nvim' {
     readonly move: boolean
   }
 
+  export interface VisibleEvent {
+    winid: number
+    bufnr: number
+    /**
+    * 1 based, end inclusive topline, botline
+    */
+    region: [number, number]
+  }
+
   /**
    * Used for listen to events send from vim.
    */
@@ -6998,7 +7104,11 @@ declare module 'coc.nvim' {
     /**
      * Attach handler to mouse move events.
      */
-    export function on(event: MoveEvents, handler: (bufnr: number, cursor: [number, number]) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
+    export function on(event: MoveEvents, handler: (bufnr: number, cursor: [number, number], hasInsert: boolean) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
+    /**
+     * Attach handler to cursor hold events.
+     */
+    export function on(event: HoldEvents, handler: (bufnr: number, cursor: [number, number], winid: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     /**
      * Attach handler to TextChangedI or TextChangedP.
      */
@@ -7035,7 +7145,14 @@ declare module 'coc.nvim' {
      */
     export function on(event: 'VimResized', handler: (columns: number, lines: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'MenuPopupChanged', handler: (event: PopupChangeEvent, cursorline: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
-    export function on(event: 'CompleteDone', handler: (item: CompleteDoneItem | {}) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
+    /**
+     * Fired on completion finish.
+     */
+    export function on(event: 'CompleteDone', handler: (item: VimCompleteItem & CompleteDoneItem | CompletionItem & CompleteDoneItem | {}) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
+    /**
+     * Fired on completion start.
+     */
+    export function on(event: 'CompleteStart', handler: (option: CompleteOption) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'InsertCharPre', handler: (character: string) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'FileType', handler: (filetype: string, bufnr: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'BufWinEnter' | 'BufWinLeave', handler: (bufnr: number, winid: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
@@ -7044,7 +7161,18 @@ declare module 'coc.nvim' {
     export function on(event: 'InputChar', handler: (session: string, character: string, mode: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'PromptInsert', handler: (value: string, bufnr: number) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     export function on(event: 'Command', handler: (name: string) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
-
+    /**
+     * Emitted on WinScrolled event of vim, with related `winid` and `bufnr`,
+     * `region` contains [topline, botline] which are 1 based, end enclusive
+     * (the same as the result from getwininfo()).
+     */
+    export function on(event: 'WinScrolled', handler: (winid: number, bufnr: number, region: Readonly<[number, number]>) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
+    /**
+     * Emitted with debounce time (100ms) after `BufWinEnter` and `WinScrolled`
+     * for the change of window visible regions. To track visible changes of all
+     * attached buffers, use `workspace.registerBufferSync()` is recommended.
+     */
+    export function on(event: 'WindowVisible', handler: (event: VisibleEvent) => EventResult, thisArg?: any, disposables?: Disposable[]): Disposable
     /**
      * Fired after user insert character and made change to the buffer.
      * Fired after TextChangedI & TextChangedP event.
@@ -8272,6 +8400,10 @@ declare module 'coc.nvim' {
      * Enable repeat support for repeat.vim, default `false`.
      */
     repeat?: boolean
+    /**
+     * Use <special> map argument, see `:h :map-special`, vim9 only.
+     */
+    special?: boolean
   }
 
   export interface DidChangeTextDocumentParams {
@@ -8325,15 +8457,27 @@ declare module 'coc.nvim' {
     /**
      * Callback functions that called with evaled arglist as arguments.
      */
-    callback: Function
+    callback: (...args: any[]) => void | Promise<void>
     /**
      * Match pattern, default to `*`.
      */
-    pattern?: string
+    pattern?: string | string[]
     /**
      * Vim expression that eval to arguments of callback, default to `[]`
      */
     arglist?: string[]
+    /**
+     * buffer number for buffer-local autocommand.
+     */
+    buffer?: number
+    /**
+     * the command is executed once when `true`, see `:h autocmd-once`
+     */
+    once?: boolean
+    /**
+     * allow nested autocmd when `true`, see `:h autocmd-nested`
+     */
+    nested?: boolean
     /**
      * Use request when `true`, use notification by default.
      */
@@ -8655,9 +8799,16 @@ declare module 'coc.nvim' {
      */
     onChange?(e: DidChangeTextDocumentParams): void
     /**
-     * Called on TextChangedI & TextChanged events.
+     * Called when NodeJS client receive lines change event, could be before or
+     * after `TextChangedI` and `TextChangedP` events, but always before
+     * `TextDocumentContentChange` event.
      */
     onTextChange?(): void
+    /**
+     * Called on `WindowVisible` event when exists.
+     * `region` contains, 1 based, end inclusive topline, botline
+     */
+    onVisible?(winid: number, region: Readonly<[number, number]>): void
   }
 
   export interface BufferSync<T extends BufferSyncItem> {
@@ -9153,7 +9304,7 @@ declare module 'coc.nvim' {
      * @param {MapMode} mode - Mode short-name.
      * @param {string} rhs - rhs of key-mapping.
      * @param {Function} fn - callback function.
-     * @param {number | boolean} buffer - Buffer number or current buffer by use `true`, default to false.
+     * @param {number | boolean} buffer - Buffer number or current buffer by use `true` or 0, default to false.
      * @param {boolean} cancel - Cancel pupop menu before invoke callback, insert mode only, define to true.
      * @returns {Disposable}
      */
@@ -9176,8 +9327,12 @@ declare module 'coc.nvim' {
     export function registerLocalKeymap(bufnr: number, mode: 'n' | 'i' | 'v' | 's' | 'x', lhs: string, fn: () => ProviderResult<any>, opts?: KeymapOption | boolean): Disposable
 
     /**
-     * Register for buffer sync objects, created item should be disposable
-     * and provide optional `onChange` which called when document change.
+     * Register for buffer sync objects, created sync object should be
+     * disposable and provide optional event handlers:
+     *
+     * - `onChange` called on `onDidChangeTextDocument` event.
+     * - `onTextChange` called on line change event from vim.
+     * - `onVisible` called on `WindowVisible` event.
      *
      * The document is always attached and not command line buffer.
      *
@@ -10353,7 +10508,7 @@ declare module 'coc.nvim' {
      * @param {number} bufnr - Buffer number
      * @param {string} ns - Highlight namespace
      * @param {HighlightItem[]} items - Highlight items
-     * @param {[number, number] | undefined} region - 0 based start line and end line (end exclusive)
+     * @param {[number, number] | undefined} region - 0 based start line and end line (end inclusive)
      * @param {CancellationToken} token - CancellationToken
      * @returns {Promise<HighlightDiff>}
      */
@@ -10822,6 +10977,11 @@ declare module 'coc.nvim' {
     isActive: boolean
   }
 
+  export interface SnippetEdit {
+    range: Range
+    snippet: string | SnippetString
+  }
+
   export interface UltiSnipsActions {
     // pre_expand action code.
     preExpand?: string
@@ -10967,6 +11127,22 @@ declare module 'coc.nvim' {
      * @returns Whether the snippet is activated.
      */
     export function insertSnippet(snippet: string | SnippetString, select?: boolean, range?: Range, insertTextMode?: InsertTextMode, ultisnip?: UltiSnippetOption): Promise<boolean>
+
+    /**
+     * Insert multiple snippets to a specific buffer, the buffer must be
+     * attached buffer.  The buffer could be hidden, ranges of inserted snippets
+     * should not have overlap, snippets are inserted as nested snippets of a
+     * top snippet.  No ultisnip snippet support, selection is disabled by
+     * default.  When not selected, the first placeholder is selected on
+     * BufEnter event.
+     *
+     * @param {number} bufnr - Buffer number of attached buffer.
+     * @param {SnippetEdit[]} edits - snippet edits with range and snippet.
+     * @param {boolean} [select] - select the first placeholder when bufnr is
+     * current buffer.
+     * @returns {Promise<boolean>} True when snippet is activated.
+     */
+    export function insertBufferSnippets(bufnr: number, edits: SnippetEdit[], select?: boolean): Promise<boolean>
 
     /**
      * Jump to next placeholder, only works when snippet session activated.
@@ -12679,4 +12855,4 @@ declare module 'coc.nvim' {
   }
   // }}
 }
-// vim: set sw=2 ts=2 sts=2 et foldmarker={{,}} foldmethod=marker foldlevel=0 nofen:
+// vim: set tw=80 sw=2 ts=2 sts=2 et foldmarker={{,}} foldmethod=marker foldlevel=0 nofen:

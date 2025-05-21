@@ -2,10 +2,10 @@
 import { Location, LocationLink } from 'vscode-languageserver-types'
 import { createLogger } from '../logger'
 import { LocationWithTarget, TextDocumentMatch } from '../types'
-import { shouldIgnore } from '../util/errors'
+import { isCancellationError, shouldIgnore } from '../util/errors'
 import { parseExtensionName } from '../util/extensionRegistry'
 import { equals } from '../util/object'
-import { Disposable } from '../util/protocol'
+import { CancellationToken, Disposable } from '../util/protocol'
 import { toText } from '../util/string'
 import workspace from '../workspace'
 import { DocumentSelector } from './index'
@@ -44,12 +44,17 @@ export default class Manager<T extends object, P = object> {
     })
   }
 
-  protected handleResults(results: PromiseSettledResult<void>[], name: string): void {
+  protected handleResults(results: PromiseSettledResult<void>[], name: string, token?: CancellationToken): void {
+    let serverCancelError: Error
     results.forEach(res => {
-      if (res.status === 'rejected' && !shouldIgnore(res.reason)) {
-        logger.error(`Provider error on ${name}:`, res.reason)
+      if (res.status === 'rejected') {
+        if (!shouldIgnore(res.reason)) logger.error(`Provider error on ${name}:`, res.reason)
+        if (token && !token.isCancellationRequested && isCancellationError(res.reason)) {
+          serverCancelError = res.reason
+        }
       }
     })
+    if (serverCancelError) throw serverCancelError
   }
 
   protected getProvider(document: TextDocumentMatch): ProviderItem<T, P> {
@@ -69,16 +74,22 @@ export default class Manager<T extends object, P = object> {
     return providerItem
   }
 
+  public getProvideByExtension(document: TextDocumentMatch, extension: string): ProviderItem<T, P> {
+    for (let item of this.providers) {
+      if (item.provider['__extensionName'] === extension) {
+        return item
+      }
+    }
+    logger.warn(`User-specified formatter not found for ${document.languageId}:`, extension)
+    return undefined
+  }
+
   protected getFormatProvider(document: TextDocumentMatch): ProviderItem<T, P> {
     // Prefer user choice
     const userChoice = workspace.getConfiguration('coc.preferences', document).get<string>('formatterExtension')
     if (userChoice) {
-      for (let item of this.providers) {
-        if (item.provider['__extensionName'] === userChoice) {
-          return item
-        }
-      }
-      logger.warn(`User-specified formatter not found for ${document.languageId}:`, userChoice)
+      let provider = this.getProvideByExtension(document, userChoice)
+      if (provider) return provider
     }
     return this.getProvider(document)
   }

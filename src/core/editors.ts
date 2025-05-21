@@ -5,10 +5,10 @@ import { URI } from 'vscode-uri'
 import events from '../events'
 import { createLogger } from '../logger'
 import type Document from '../model/document'
+import { convertFormatOptions, VimFormatOption } from '../util/convert'
 import { sameFile } from '../util/fs'
 import { Disposable, Emitter, Event } from '../util/protocol'
 import Documents from './documents'
-import { convertFormatOptions, VimFormatOption } from '../util/convert'
 const logger = createLogger('core-editors')
 
 interface EditorOption {
@@ -73,11 +73,11 @@ export default class Editors {
     return Array.from(this.editors.values())
   }
 
-  public isVisible(bufnr: number): boolean {
+  public getFormatOptions(bufnr: number | string): FormattingOptions | undefined {
     for (let editor of this.editors.values()) {
-      if (editor.bufnr == bufnr) return true
+      if (editor.bufnr === bufnr || editor.uri === bufnr) return editor.options
     }
-    return false
+    return undefined
   }
 
   public getBufWinids(bufnr: number): number[] {

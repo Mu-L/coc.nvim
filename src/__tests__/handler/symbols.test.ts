@@ -55,12 +55,11 @@ describe('Parser', () => {
 describe('symbols handler', () => {
 
   async function createBuffer(code: string): Promise<Buffer> {
-    let buf = await nvim.buffer
-    await nvim.command('setf javascript')
-    await buf.setLines(code.split('\n'), { start: 0, end: -1, strictIndexing: false })
     let doc = await workspace.document
-    doc.forceSync()
-    return buf
+    doc.setFiletype('javascript')
+    await doc.buffer.setLines(code.split('\n'), { start: 0, end: -1, strictIndexing: false })
+    await doc.patchChange()
+    return doc.buffer
   }
 
   describe('configuration', () => {
@@ -81,9 +80,9 @@ describe('symbols handler', () => {
     }`
       let buf = await createBuffer(code)
       await events.fire('CursorMoved', [buf.id, [2, 8]])
-      await helper.waitFor('eval', ['b:coc_current_function'], 'fun1')
+      await helper.waitFor('eval', ['get(b:,"coc_current_function","")'], 'fun1')
       await events.fire('CursorMoved', [buf.id, [1, 8]])
-      await helper.waitFor('eval', ['b:coc_current_function'], 'myClass')
+      await helper.waitFor('eval', ['get(b:,"coc_current_function","")'], 'myClass')
     })
   })
 

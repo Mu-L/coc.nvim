@@ -270,7 +270,11 @@ describe('workspace methods', () => {
     expect(Workspace).toBeDefined()
     expect(workspace['onDidOpenTerminal']).toBeDefined()
     expect(workspace['onDidCloseTerminal']).toBeDefined()
+    let spy = jest.spyOn(workspace.nvim, 'call').mockImplementation(() => {
+      return null
+    })
     workspace.checkVersion(0)
+    spy.mockRestore()
   })
 
   it('should resolve module path if exists', async () => {
@@ -444,6 +448,7 @@ describe('workspace utility', () => {
     expect(line).toBe('""')
     disposable.dispose()
   })
+
   it('should check nvim version', async () => {
     expect(workspace.has('patch-7.4.248')).toBe(false)
     expect(workspace.has('nvim-0.5.0')).toBe(true)

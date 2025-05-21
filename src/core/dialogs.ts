@@ -9,13 +9,12 @@ import QuickPick from '../model/quickpick'
 import { QuickPickItem } from '../types'
 import { defaultValue } from '../util'
 import { isFalsyOrEmpty } from '../util/array'
-import { floatHighlightGroup, isVim } from '../util/constants'
+import { floatHighlightGroup } from '../util/constants'
 import { Mutex } from '../util/mutex'
 import { toNumber } from '../util/numbers'
-import { isWindows } from '../util/platform'
 import { CancellationToken } from '../util/protocol'
 import { toText } from '../util/string'
-import { callAsync, has, PartialEnv } from './funcs'
+import { callAsync, PartialEnv } from './funcs'
 import { showPrompt } from './ui'
 export type Item = QuickPickItem | string
 export type InputOptions = Pick<InputPreference, 'borderhighlight' | 'position' | 'marginTop' | 'placeHolder'>
@@ -165,11 +164,10 @@ export class Dialogs {
     })
   }
 
-  public async requestInput(title: string, env: PartialEnv, value?: string, option?: InputOptions): Promise<string | undefined> {
+  public async requestInput(title: string, _env: PartialEnv, value?: string, option?: InputOptions): Promise<string | undefined> {
     let { nvim } = this
     const promptInput = this.configuration.get('coc.preferences.promptInput')
-    const inputSupported = !isVim || (has(env, 'patch-8.2.750') && !isWindows)
-    if (promptInput && inputSupported) {
+    if (promptInput) {
       return await this.mutex.use(async () => {
         let input = new InputBox(nvim, toText(value))
         await input.show(title, Object.assign(this.inputPreference, defaultValue(option, {})))
@@ -188,6 +186,19 @@ export class Dialogs {
         return res
       })
     }
+  }
+
+  /**
+   * Request selection by use inputlist of vim.
+   */
+  public async requestInputList(prompt: string, items: string[]): Promise<number> {
+    let { nvim } = this
+    return await this.mutex.use(async () => {
+      let list = items.map((text, i) => `${i + 1}. ${text}`)
+      let res = await callAsync<number>(this.nvim, 'inputlist', [[`${prompt}:`, ...list]])
+      nvim.command('normal! :<C-u>', true)
+      return res >= 1 && res <= items.length ? res - 1 : -1
+    })
   }
 
   public async createInputBox(title: string, value: string | undefined, option?: InputPreference): Promise<InputBox> {

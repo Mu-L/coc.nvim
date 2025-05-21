@@ -2,7 +2,7 @@ scriptencoding utf-8
 let s:root = expand('<sfile>:h:h:h')
 let s:is_win = has('win32') || has('win64')
 let s:is_vim = !has('nvim')
-let s:vim_api_version = 35
+let s:vim_api_version = 37
 let s:is_win32unix = has('win32unix')
 let s:win32unix_prefix = ''
 let s:win32unix_fix_home = 0
@@ -70,10 +70,6 @@ endfunction
 
 function! coc#util#synname() abort
   return synIDattr(synID(line('.'), col('.') - 1, 1), 'name')
-endfunction
-
-function! coc#util#setline(lnum, line)
-  keepjumps call setline(a:lnum, a:line)
 endfunction
 
 function! coc#util#version()
@@ -159,15 +155,17 @@ function! coc#util#jump(cmd, filepath, ...) abort
     return
   elseif a:cmd ==# 'drop'
     let dstbuf = bufadd(path)
-    let binfo = getbufinfo(dstbuf)
-    if len(binfo) == 1 && empty(binfo[0].windows)
-      execute 'buffer '.dstbuf
-      let &buflisted = 1
-    else
-      let saved = &wildignore
-      set wildignore=
-      execute 'drop '.fnameescape(file)
-      execute 'set wildignore='.saved
+    if bufnr('%') != dstbuf
+      let binfo = getbufinfo(dstbuf)
+      if len(binfo) == 1 && empty(binfo[0].windows)
+        execute 'buffer '.dstbuf
+        let &buflisted = 1
+      else
+        let saved = &wildignore
+        set wildignore=
+        execute 'drop '.fnameescape(file)
+        execute 'set wildignore='.saved
+      endif
     endif
   elseif a:cmd ==# 'edit' && bufloaded(file)
     exe 'b '.bufnr(file)
@@ -295,7 +293,7 @@ function! coc#util#vim_info()
         \ 'colorscheme': get(g:, 'colors_name', ''),
         \ 'workspaceFolders': get(g:, 'WorkspaceFolders', v:null),
         \ 'background': &background,
-        \ 'runtimepath': join(globpath(&runtimepath, '', 0, 1), ','),
+        \ 'runtimepath': join(coc#compat#list_runtime_paths(), ','),
         \ 'locationlist': get(g:,'coc_enable_locationlist', 1),
         \ 'progpath': v:progpath,
         \ 'guicursor': &guicursor,
@@ -368,14 +366,6 @@ function! coc#util#do_autocmd(name) abort
   endif
 endfunction
 
-function! coc#util#unmap(bufnr, keys) abort
-  if bufnr('%') == a:bufnr
-    for key in a:keys
-      exe 'silent! nunmap <buffer> '.key
-    endfor
-  endif
-endfunction
-
 function! coc#util#refactor_foldlevel(lnum) abort
   if a:lnum <= 2 | return 0 | endif
   let line = getline(a:lnum)
@@ -422,15 +412,11 @@ function! coc#util#get_editoroption(winid) abort
   return {
         \ 'bufnr': bufnr,
         \ 'winid': a:winid,
-        \ 'tabpageid': coc#util#tabnr_id(info['tabnr']),
+        \ 'tabpageid': coc#compat#tabnr_id(info['tabnr']),
         \ 'winnr': winnr(),
         \ 'visibleRanges': s:visible_ranges(a:winid),
         \ 'formatOptions': coc#util#get_format_opts(bufnr),
         \ }
-endfunction
-
-function! coc#util#tabnr_id(tabnr) abort
-  return s:is_vim ? coc#api#get_tabid(a:tabnr) : nvim_list_tabpages()[a:tabnr - 1]
 endfunction
 
 function! coc#util#get_loaded_bufs() abort
@@ -446,23 +432,15 @@ function! coc#util#editor_infos() abort
       if buftype !=# '' && buftype !=# 'acwrite'
         continue
       endif
-      let bufname = bufname(bufnr)
       call add(result, {
           \ 'winid': info['winid'],
           \ 'bufnr': bufnr,
-          \ 'tabid': coc#util#tabnr_id(info['tabnr']),
-          \ 'fullpath': empty(bufname) ? '' : coc#util#win32unix_to_node(fnamemodify(bufname, ':p')),
+          \ 'tabid': coc#compat#tabnr_id(info['tabnr']),
+          \ 'fullpath': coc#util#get_fullpath(bufnr),
           \ })
     endif
   endfor
   return result
-endfunction
-
-function! coc#util#tabpages() abort
-  if s:is_vim
-    return coc#api#exec('list_tabpages', [])
-  endif
-  return nvim_list_tabpages()
 endfunction
 
 function! coc#util#getpid()
@@ -471,17 +449,6 @@ function! coc#util#getpid()
   endif
   let cmd = 'cat /proc/' . getpid() . '/winpid'
   return substitute(system(cmd), '\v\n', '', 'gi')
-endfunction
-
-" Get indentkeys for indent on TextChangedP, consider = for word indent only.
-function! coc#util#get_indentkeys() abort
-  if empty(&indentexpr)
-    return ''
-  endif
-  if &indentkeys !~# '='
-    return ''
-  endif
-  return &indentkeys
 endfunction
 
 function! coc#util#get_bufoptions(bufnr, max) abort
@@ -514,16 +481,24 @@ function! coc#util#get_bufoptions(bufnr, max) abort
         \ 'lisp': getbufvar(a:bufnr, '&lisp'),
         \ 'iskeyword': getbufvar(a:bufnr, '&iskeyword'),
         \ 'changedtick': getbufvar(a:bufnr, 'changedtick'),
-        \ 'fullpath': empty(bufname) ? '' : coc#util#win32unix_to_node(fnamemodify(bufname, ':p')),
+        \ 'fullpath': coc#util#get_fullpath(a:bufnr)
         \}
 endfunction
 
 " Get fullpath for NodeJs of current buffer or bufnr
 function! coc#util#get_fullpath(...) abort
-  if a:0 == 0
-    return coc#util#win32unix_to_node(expand('%:p'))
+  let nr = a:0 == 0 ? bufnr('%') : a:1
+  if !bufloaded(nr)
+    return ''
   endif
-  return coc#util#win32unix_to_node(fnamemodify(bufname(a:1), ':p'))
+  if s:is_vim && getbufvar(nr, '&buftype') ==# 'terminal'
+    let job = term_getjob(nr)
+    let pid = job_info(job)->get('process', 0)
+    let cwd = fnamemodify(getcwd(), ':~')
+    return 'term://' . cwd . '//' . pid . ':' . substitute(bufname(nr), '^!', '', '')
+  endif
+  let name = bufname(nr)
+  return empty(name) ? '' : coc#util#win32unix_to_node(fnamemodify(name, ':p'))
 endfunction
 
 function! coc#util#bufsize(bufnr) abort

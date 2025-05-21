@@ -1,10 +1,10 @@
 import { Neovim } from '@chemzqm/neovim'
 import { CancellationTokenSource, Disposable } from 'vscode-languageserver-protocol'
+import events from '../../events'
+import QuickPick from '../../model/quickpick'
 import { QuickPickItem } from '../../types'
 import { disposeAll } from '../../util'
-import events from '../../events'
 import window from '../../window'
-import QuickPick from '../../model/quickpick'
 import helper from '../helper'
 export type Item = QuickPickItem | string
 
@@ -180,6 +180,7 @@ describe('QuickPick', () => {
     }, 2)
     expect(q.value).toBe('f')
     expect(q.selectedItems.length).toBe(2)
+    expect(q.inputBox).toBeDefined()
     await nvim.input('<C-space>')
     await helper.waitValue(() => {
       return q.selectedItems.length

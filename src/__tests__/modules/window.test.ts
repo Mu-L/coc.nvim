@@ -282,6 +282,30 @@ describe('window', () => {
       range = await window.getVisibleRanges(buf.id)
       expect(range.length).toBe(0)
     })
+
+    it('should requestInputList', async () => {
+      Object.assign(workspace.env, { lines: 3 })
+      {
+        let p = window.requestInputList('prompt', ['foo', 'bar', 'abc', 'def'])
+        await helper.waitValue(async () => {
+          let m = await nvim.mode
+          return m.mode
+        }, 'c')
+        await nvim.input('1<cr>')
+        let res = await p
+        expect(res).toBe(0)
+      }
+      {
+        let p = window.requestInputList('prompt', ['foo', 'bar', 'abc', 'def'])
+        await helper.waitValue(async () => {
+          let m = await nvim.mode
+          return m.mode
+        }, 'c')
+        await nvim.input('8<cr>')
+        let res = await p
+        expect(res).toBe(-1)
+      }
+    })
   })
 
   describe('window showMessage', () => {
@@ -345,12 +369,23 @@ describe('window', () => {
     })
 
     it('should use notification for message', async () => {
-      helper.updateConfiguration('coc.preferences.enableMessageDialog', true)
       let p = window.showErrorMessage('error message')
       await helper.waitFloat()
       await nvim.call('coc#float#close_all', [])
       let res = await p
       expect(res).toBeUndefined()
+    })
+
+    it('should show confirm for message', async () => {
+      helper.updateConfiguration('coc.preferences.enableMessageDialog', false)
+      let p = window.showInformationMessage('error message', 'first', 'second')
+      await helper.waitValue(async () => {
+        let m = await nvim.mode
+        return m.mode
+      }, 'c')
+      await nvim.input('2')
+      let res = await p
+      expect(res).toBe('second')
     })
 
     it('should prefer menu picker for notification message', async () => {
